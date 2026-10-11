@@ -1,0 +1,21 @@
+Review the current extension architecture. I need to implement 4 major upgrades to make the UX seamless and proactive. Please update the relevant files with the following features:
+
+1. Refactor Ticker Detection (content/platform-detector.js): > Remove the 3-second polling interval. Implement a MutationObserver to watch for ticker/price changes in the DOM instantly. Also, add listeners for SPA navigation (URL changes) so the ticker updates immediately when the user switches charts on TradingView.
+
+2. Optimize Visual Scraping (content/chart-scraper.js): > Instead of using chrome.tabs.captureVisibleTab and cropping, write logic to directly target the <canvas> element of the chart on platforms like TradingView and Binance. Use canvas.toDataURL('image/jpeg', 0.9) to grab the chart instantly without screen-capture overhead.
+
+3. Implement Alert Notifications (manifest.json & background/service-worker.js):
+Add the "notifications" permission to the manifest. In the background worker, create a listener that accepts alert messages from the Cloud Function or Content Script and triggers chrome.notifications.create.
+
+4. Build the Risk Calculator Widget (sidepanel/panel.html & panel.js):
+When the AI returns a chat response containing the structured tags **ENTRY:** and **STOP LOSS:**, dynamically render a 'Risk Calculator' UI widget directly below that message. The widget should have inputs for 'Account Balance ($)' and 'Risk Percentage (%)'. Write the logic in panel.js to automatically calculate the position size based on the difference between the Entry and Stop Loss, displaying the recommended position size instantly."
+
+5. Implement Multimodal Intent Recognition (background/service-worker.js & Backend):
+Update the prompt construction logic so the AI doesn't always default to a 'Trade Signal' template.
+
+Conditional Trigger: If the user's prompt is a general question (e.g., "What indicator is that?" or "Explain this candle"), the system prompt should instruct the AI to provide a conversational explanation instead of the [PAIR/BIAS/ENTRY] format.
+
+Implicit Context: Even if the user doesn't explicitly click 'Upload,' the extension should always include the last captured chart or the current live ticker data in the background context of the API call. This allows the user to say "What's the play here?" without manually attaching a file, and Wallie will know 'here' refers to the active TradingView tab.
+
+6. "Always-On" Ticker Context (content/platform-detector.js):
+Ensure the page_context sent to the AI always includes the current Ticker, Price, and Timeframe as 'System Metadata.' This ensures that even if no image is sent, the AI knows the user is looking at XAUUSD at 4,424.215 and can fetch relevant news or sentiment data automatically.

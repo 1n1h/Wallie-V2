@@ -1,0 +1,44 @@
+/* Wallie AI — Chart Selection Overlay */
+
+.wallie-select-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: rgba(15, 15, 26, 0.4);
+  cursor: crosshair;
+  backdrop-filter: blur(1px);
+}
+
+.wallie-select-box {
+  display: none;
+  position: fixed;
+  border: 2px solid #a855f7;
+  background: rgba(168, 85, 247, 0.08);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 1px rgba(168, 85, 247, 0.3),
+    0 0 30px rgba(168, 85, 247, 0.15);
+  pointer-events: none;
+  z-index: 2147483647;
+}
+
+.wallie-select-label {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #1a1040, #0f0f1a);
+  color: #f1f1f4;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(168, 85, 247, 0.1);
+  pointer-events: none;
+  z-index: 2147483647;
+}

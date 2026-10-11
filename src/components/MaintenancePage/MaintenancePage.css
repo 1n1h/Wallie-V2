@@ -1,0 +1,225 @@
+.maintenance-page {
+  min-height: 100vh;
+  background: #17171A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.maintenance-content {
+  max-width: 480px;
+  width: 100%;
+  text-align: center;
+}
+
+.maintenance-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  margin-bottom: 24px;
+}
+
+.maintenance-title {
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(90deg, #0A84FF, #214fd8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 12px;
+}
+
+.maintenance-subtitle {
+  color: #a0a0b8;
+  font-size: 16px;
+  line-height: 1.5;
+  margin-bottom: 32px;
+}
+
+.maintenance-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.maintenance-form input,
+.maintenance-form select {
+  background: #1D1D1F;
+  border: 1px solid #2a2a4a;
+  border-radius: 10px;
+  padding: 14px 16px;
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.maintenance-form input::placeholder {
+  color: #6a6a8a;
+}
+
+.maintenance-form select {
+  color: #6a6a8a;
+}
+
+.maintenance-form select option {
+  background: #1D1D1F;
+  color: #fff;
+}
+
+.maintenance-form input:focus,
+.maintenance-form select:focus {
+  border-color: #0A84FF;
+}
+
+.maintenance-form button {
+  background: linear-gradient(90deg, #0A84FF, #214fd8);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  margin-top: 4px;
+}
+
+.maintenance-form button:hover {
+  opacity: 0.9;
+}
+
+.maintenance-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.maintenance-success {
+  background: #1D1D1F;
+  border-radius: 16px;
+  padding: 32px 24px;
+  margin-bottom: 24px;
+}
+
+.maintenance-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, #0A84FF, #214fd8);
+  color: #fff;
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+
+.maintenance-success h2 {
+  color: #fff;
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.maintenance-success p {
+  color: #a0a0b8;
+  font-size: 15px;
+}
+
+.maintenance-footer {
+  margin-top: 40px;
+}
+
+.maintenance-footer p {
+  color: #6a6a8a;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.maintenance-footer a {
+  color: #0A84FF;
+  text-decoration: none;
+}
+
+.maintenance-footer a:hover {
+  text-decoration: underline;
+}
+
+.maintenance-socials {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.maintenance-socials a {
+  color: #a0a0b8;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.maintenance-socials a:hover {
+  color: #fff;
+}
+
+/* Admin bypass */
+.maintenance-admin {
+  margin-top: 48px;
+}
+
+.maintenance-admin-btn {
+  background: none;
+  border: 1px solid #2a2a4a;
+  color: #4a4a6a;
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.maintenance-admin-btn:hover {
+  border-color: #0A84FF;
+  color: #0A84FF;
+}
+
+.maintenance-passcode-form {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.maintenance-passcode-form input {
+  background: #1D1D1F;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  width: 160px;
+  text-align: center;
+}
+
+.maintenance-passcode-form input:focus {
+  border-color: #0A84FF;
+}
+
+.maintenance-passcode-form button {
+  background: linear-gradient(90deg, #0A84FF, #214fd8);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.maintenance-passcode-error {
+  color: #ff6b6b;
+  font-size: 13px;
+  width: 100%;
+  margin-top: 4px;
+}

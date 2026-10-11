@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wallie AI</title>
+  <link rel="stylesheet" href="panel.css" />
+  <script src="firebase-app-compat.js"></script>
+  <script src="firebase-auth-compat.js"></script>
+</head>
+<body>
+  <div id="app">
+
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="screen">
+      <div class="auth-wrapper">
+        <img src="../icons/wallie_logo.png" alt="Wallie AI" class="auth-logo-img" />
+        <h1 class="auth-title">Wallie AI</h1>
+        <p class="auth-sub">Your AI trading assistant,<br/>right next to your charts.</p>
+        <button id="btn-google-login" class="auth-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Continue with Google
+        </button>
+        <button id="btn-apple-login" class="auth-btn auth-btn-dark">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+          Continue with Apple
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Chat Screen -->
+    <div id="chat-screen" class="screen hidden">
+
+      <!-- Topbar with Recent Chats dropdown -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="btn-recent-chats" class="topbar-menu-btn" title="Recent chats">
+            <div class="topbar-logo">W</div>
+            <span class="topbar-title">Wallie AI</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+        <div class="topbar-right">
+          <button id="btn-new-chat" class="icon-btn" title="New chat">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <!-- Pop-out / Dock button -->
+          <button id="btn-popout" class="icon-btn" title="Pop out window">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="15" height="15" rx="2"/><path d="M9 2h11a2 2 0 0 1 2 2v11"/></svg>
+          </button>
+          <!-- Close (only visible in popup mode) -->
+          <button id="btn-close-popup" class="icon-btn hidden" title="Close">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <button id="btn-menu" class="icon-btn" title="More">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Recent Chats Dropdown -->
+      <div id="recent-chats-dropdown" class="dropdown hidden">
+        <div class="dropdown-header">Recent chats</div>
+        <div id="recent-chats-list" class="dropdown-list">
+          <div class="dropdown-empty">No recent chats</div>
+        </div>
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-header">Voice</div>
+        <div class="voice-toggle">
+          <span>Text-to-speech</span>
+          <button id="tts-toggle" class="toggle-btn active" title="Toggle TTS">
+            <span class="toggle-knob"></span>
+          </button>
+        </div>
+        <div id="voice-options" class="voice-options"></div>
+        <div class="dropdown-divider"></div>
+        <button class="dropdown-item" id="btn-settings-dropdown">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings & Help
+        </button>
+      </div>
+
+      <!-- Sharing bar -->
+      <div id="sharing-bar" class="sharing-bar hidden">
+        <div class="sharing-pill">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+          <span>Sharing "<span id="sharing-label">XAUUSD 4,411.90</span>"</span>
+        </div>
+        <button id="btn-capture-chart" class="capture-pill" title="Capture chart">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Capture
+        </button>
+      </div>
+
+      <!-- Chat Messages -->
+      <div id="chat-messages" class="chat-messages">
+        <div class="welcome-section">
+          <h2 class="greeting-text">Hello, <span id="user-name" class="gradient-text">Trader</span></h2>
+          <p class="greeting-sub">How can I help you today?</p>
+        </div>
+        <div class="suggestions" id="suggestions">
+          <button class="chip" data-action="capture">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Capture this chart
+          </button>
+          <button class="chip" data-action="select">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            Select chart area
+          </button>
+          <button class="chip" data-action="analyze" id="chip-analyze">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+            <span id="chip-analyze-text">Analyze current setup</span>
+          </button>
+          <button class="chip" data-action="sentiment">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+            Market sentiment
+          </button>
+        </div>
+      </div>
+
+      <!-- Image Preview -->
+      <div id="image-preview" class="image-preview hidden">
+        <div class="preview-wrap">
+          <img id="preview-img" src="" alt="Chart preview" />
+          <button id="btn-remove-image" class="remove-img-btn" title="Remove">
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- @ Tab Picker Dropdown -->
+      <div id="tab-picker" class="tab-picker hidden">
+        <div class="dropdown-header">Recent Tabs</div>
+        <div id="tab-picker-list" class="dropdown-list"></div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="input-row">
+          <button id="btn-attach" class="input-icon-btn" title="Attach image">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <textarea id="chat-input" placeholder="Type @ to ask about a tab..." rows="1"></textarea>
+          <button id="btn-send" class="send-btn" disabled title="Send">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+        <input type="file" id="file-input" accept="image/*" hidden />
+      </div>
+    </div>
+
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+/* ===== TRADINGVIEW TICKER TAPE (top of the chat UI) ===== */
+.tv-tape-bar {
+  flex-shrink: 0;
+  height: 46px;
+  background: #1d1a16;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  position: relative;
+  z-index: 5;
+}
+[data-theme="light"] .tv-tape-bar {
+  background: #efe9dc;
+  border-bottom-color: rgba(101, 84, 50, 0.14);
+}
+.tv-tape-host,
+.tv-tape-host .tradingview-widget-container__widget {
+  height: 100%;
+  width: 100%;
+}
+.tv-tape-host .tradingview-widget-copyright {
+  display: none;
+}

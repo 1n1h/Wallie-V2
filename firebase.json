@@ -1,0 +1,41 @@
+{
+  "hosting": {
+    "site": "wallie-ai-37522",
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "**/*.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "source": "**/*.js",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "source": "**/*.css",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "predeploy": [
+      "npm run build"
+    ]
+  },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

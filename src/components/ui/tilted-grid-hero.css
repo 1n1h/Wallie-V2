@@ -1,0 +1,22 @@
+.tgh-root {
+  position: relative;
+  overflow: hidden;
+}
+.tgh-band {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.5s ease;
+}
+.tgh-slice {
+  position: absolute;
+  top: 0;
+  overflow: hidden;
+  background: #232120;
+}
+.tgh-img {
+  position: absolute;
+  top: 0;
+  max-width: none;
+  object-fit: cover;
+}

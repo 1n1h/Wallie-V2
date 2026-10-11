@@ -1,0 +1,23 @@
+/* ===== TRADINGVIEW TIMELINE / NEWS (PlayPanel — Activity tab) ===== */
+.pp-news-feed {
+  position: relative;
+  width: 100%;
+  height: 460px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.pp-news-feed .tradingview-widget-container__widget {
+  height: calc(100% - 22px);
+  width: 100%;
+}
+.pp-news-feed .tradingview-widget-copyright {
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+  padding: 3px 0;
+  color: #9a958c;
+}
+.pp-news-feed .tradingview-widget-copyright a {
+  color: #4b93ff;
+  text-decoration: none;
+}

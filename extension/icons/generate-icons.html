@@ -1,0 +1,53 @@
+<!--
+  Open this file in a browser to generate the extension icons.
+  Right-click each canvas and "Save image as" to save:
+    icon16.png, icon48.png, icon128.png
+-->
+<!DOCTYPE html>
+<html>
+<body style="background:#111; padding:40px; font-family:sans-serif; color:#fff;">
+  <h2>Wallie AI Extension Icons</h2>
+  <p>Right-click each icon and save as the filename shown below.</p>
+  <div style="display:flex; gap:40px; align-items:end; margin-top:20px;">
+    <div>
+      <canvas id="c128" width="128" height="128"></canvas>
+      <p>icon128.png</p>
+    </div>
+    <div>
+      <canvas id="c48" width="48" height="48"></canvas>
+      <p>icon48.png</p>
+    </div>
+    <div>
+      <canvas id="c16" width="16" height="16"></canvas>
+      <p>icon16.png</p>
+    </div>
+  </div>
+  <script>
+    function drawIcon(canvas) {
+      const s = canvas.width;
+      const ctx = canvas.getContext('2d');
+      const r = s * 0.2;
+
+      // Rounded rect
+      ctx.beginPath();
+      ctx.roundRect(0, 0, s, s, r);
+      const grad = ctx.createLinearGradient(0, 0, s, s);
+      grad.addColorStop(0, '#a855f7');
+      grad.addColorStop(0.5, '#6366f1');
+      grad.addColorStop(1, '#3b82f6');
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Letter W
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${s * 0.55}px Inter, Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('W', s / 2, s / 2 + s * 0.03);
+    }
+    drawIcon(document.getElementById('c128'));
+    drawIcon(document.getElementById('c48'));
+    drawIcon(document.getElementById('c16'));
+  </script>
+</body>
+</html>

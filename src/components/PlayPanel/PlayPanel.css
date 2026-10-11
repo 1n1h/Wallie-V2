@@ -1,0 +1,618 @@
+/* Playground panel — right rail on the chat page */
+.pp {
+  width: 302px;
+  flex-shrink: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  background: #131315;
+  border-left: 1px solid #262628;
+  padding: 18px 14px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+.pp-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f5f5f7;
+  letter-spacing: -0.01em;
+}
+.pp-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #86868b;
+}
+.pp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+.pp-card {
+  background: #202022;
+  border: 1px solid #2e2e30;
+  border-radius: 20px;
+  padding: 16px;
+}
+.pp-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.pp-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f5f5f7;
+}
+.pp-progress {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  background: #006ced;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.pp-card-note {
+  margin-top: 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #86868b;
+}
+
+/* routine checklist */
+.pp-steps { display: flex; flex-direction: column; gap: 4px; }
+.pp-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: #d6d6da;
+  padding: 6px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.pp-step:hover { background: rgba(255, 255, 255, 0.04); }
+.pp-step input {
+  margin-top: 2px;
+  width: 15px;
+  height: 15px;
+  accent-color: #006ced;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.pp-step.done span { color: #6e6e73; text-decoration: line-through; }
+
+/* watchlist */
+.pp-watch { display: flex; flex-direction: column; gap: 4px; }
+.pp-watch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+.pp-watch-row:hover { background: #2c2c2e; }
+.pp-watch-sym {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #ffffff;
+  background: #006ced;
+  border-radius: 8px;
+  padding: 3px 8px;
+  min-width: 52px;
+  text-align: center;
+}
+.pp-watch-name { flex: 1; font-size: 13.5px; color: #a1a1a6; }
+.pp-watch-arrow { color: #48484a; font-size: 14px; }
+.pp-watch-row:hover .pp-watch-arrow { color: #4b93ff; }
+
+/* quick prompts */
+.pp-prompts { display: flex; flex-direction: column; gap: 8px; }
+.pp-prompt {
+  background: #2c2c2e;
+  border: 1px solid #343436;
+  color: #f5f5f7;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+  border-radius: 999px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.pp-prompt:hover { background: #3a3a3c; border-color: #006ced; }
+
+/* lesson */
+.pp-lesson {
+  background: linear-gradient(180deg, #ffffff 0%, #eef6ff 60%, #d6ebff 100%);
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pp-lesson-tag {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: #006ced;
+}
+.pp-lesson-title { font-size: 16px; font-weight: 700; color: #111113; }
+.pp-lesson-body { font-size: 13.5px; line-height: 1.55; color: #33383f; }
+
+.pp-foot {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6e6e73;
+  text-align: center;
+  padding: 0 8px;
+}
+
+/* hide on narrower screens so chat keeps its space */
+@media (max-width: 1180px) {
+  .pp { display: none; }
+}
+
+/* light theme */
+[data-theme="light"] .pp {
+  background: #ffffff;
+  border-left-color: rgba(0, 0, 0, 0.07);
+}
+[data-theme="light"] .pp-title { color: #17171a; }
+[data-theme="light"] .pp-card {
+  background: #f4f5f7;
+  border-color: rgba(0, 0, 0, 0.06);
+}
+[data-theme="light"] .pp-card-title { color: #17171a; }
+[data-theme="light"] .pp-step { color: #33383f; }
+[data-theme="light"] .pp-step:hover { background: rgba(0, 0, 0, 0.04); }
+[data-theme="light"] .pp-watch-row:hover { background: #e9edf2; }
+[data-theme="light"] .pp-watch-name { color: #5a616b; }
+[data-theme="light"] .pp-prompt {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #17171a;
+}
+[data-theme="light"] .pp-prompt:hover { background: #eef4fd; }
+
+/* ===== SURFACE RULE: cards oppose the rail ===== */
+.pp-card { background: #ffffff; border-color: #dce9f7; }
+.pp-card-title { color: #111113; }
+.pp-card-note { color: #5a616b; }
+.pp-step { color: #24272b; }
+.pp-step:hover { background: rgba(0, 108, 237, 0.06); }
+.pp-step.done span { color: #9aa3af; }
+.pp-watch-name { color: #5a616b; }
+.pp-watch-row:hover { background: #eaf3ff; }
+.pp-watch-arrow { color: #9aa3af; }
+.pp-prompt { background: #1d1d1f; border-color: #1d1d1f; color: #f5f5f7; }
+.pp-prompt:hover { background: #2c2c2e; border-color: #006ced; }
+[data-theme="light"] .pp-card { background: #1d1d1f; border-color: #2e2e30; }
+[data-theme="light"] .pp-card-title { color: #f5f5f7; }
+[data-theme="light"] .pp-card-note { color: #9a9aa0; }
+[data-theme="light"] .pp-step { color: #d6d6da; }
+[data-theme="light"] .pp-step:hover { background: rgba(255, 255, 255, 0.06); }
+[data-theme="light"] .pp-step.done span { color: #6e6e73; }
+[data-theme="light"] .pp-watch-name { color: #9a9aa0; }
+[data-theme="light"] .pp-watch-row:hover { background: #2c2c2e; }
+[data-theme="light"] .pp-watch-arrow { color: #86868b; }
+[data-theme="light"] .pp-prompt { background: #ffffff; border-color: rgba(0, 0, 0, 0.12); color: #17171a; }
+[data-theme="light"] .pp-lesson { background: #1d1d1f; }
+[data-theme="light"] .pp-lesson-title { color: #ffffff; }
+[data-theme="light"] .pp-lesson-body { color: #c7c7cc; }
+[data-theme="light"] .pp-lesson-tag { color: #4b93ff; }
+
+/* ===== PROFILE HEADER ===== */
+.pp-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 10px 0 4px;
+}
+.pp-avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid #dce9f7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+.pp-avatar img { width: 62px; height: 62px; object-fit: contain; }
+.pp-name {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #f5f5f7;
+}
+.pp-status {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #86868b;
+}
+[data-theme="light"] .pp-name { color: #17171a; }
+[data-theme="light"] .pp-avatar { background: #1d1d1f; border-color: #2e2e30; }
+
+/* ===== SOFT PASS: muted cards on a calm rail ===== */
+.pp { background: #1b1b1d; border-left-color: rgba(255, 255, 255, 0.06); }
+.pp-card { background: #262628; border-color: rgba(255, 255, 255, 0.06); }
+.pp-card-title { color: #f2f2f4; }
+.pp-card-note { color: #9a9aa0; }
+.pp-step { color: #d8d8dc; }
+.pp-step:hover { background: rgba(255, 255, 255, 0.05); }
+.pp-step.done span { color: #6e6e73; }
+.pp-watch-name { color: #9a9aa0; }
+.pp-watch-row:hover { background: #2e2e30; }
+.pp-watch-arrow { color: #6e6e73; }
+.pp-prompt { background: #2e2e30; border-color: rgba(255, 255, 255, 0.05); color: #e8e8ea; }
+.pp-prompt:hover { background: #343436; border-color: rgba(255, 255, 255, 0.12); }
+.pp-lesson { background: linear-gradient(180deg, #eef1f5, #dde6f0); }
+.pp-lesson-title { color: #232528; }
+.pp-lesson-body { color: #4a4f57; }
+.pp-avatar { background: #f2f4f7; border-color: rgba(255, 255, 255, 0.08); }
+[data-theme="light"] .pp { background: #f7f7f8; border-left-color: rgba(0, 0, 0, 0.06); }
+[data-theme="light"] .pp-card { background: #ffffff; border-color: rgba(0, 0, 0, 0.06); }
+[data-theme="light"] .pp-card-title { color: #1e1e21; }
+[data-theme="light"] .pp-card-note { color: #6e6e73; }
+[data-theme="light"] .pp-step { color: #333338; }
+[data-theme="light"] .pp-step:hover { background: rgba(0, 0, 0, 0.04); }
+[data-theme="light"] .pp-step.done span { color: #9aa3af; }
+[data-theme="light"] .pp-watch-name { color: #6e6e73; }
+[data-theme="light"] .pp-watch-row:hover { background: #f0f1f4; }
+[data-theme="light"] .pp-watch-arrow { color: #9a9aa0; }
+[data-theme="light"] .pp-prompt { background: #edeef0; border-color: rgba(0, 0, 0, 0.04); color: #1e1e21; }
+[data-theme="light"] .pp-prompt:hover { background: #e2e3e7; }
+[data-theme="light"] .pp-lesson { background: #262628; }
+[data-theme="light"] .pp-lesson-title { color: #f5f5f7; }
+[data-theme="light"] .pp-lesson-body { color: #c7c7cc; }
+[data-theme="light"] .pp-lesson-tag { color: #4b93ff; }
+[data-theme="light"] .pp-avatar { background: #262628; border-color: rgba(0, 0, 0, 0.08); }
+
+/* ===== TAN PASS: warm the rail ===== */
+.pp { background: #1d1a16; border-left-color: rgba(240, 230, 210, 0.07); }
+.pp-card { background: #28241f; border-color: rgba(240, 230, 210, 0.07); }
+.pp-prompt { background: #322d27; }
+.pp-prompt:hover { background: #3a352e; }
+.pp-lesson { background: linear-gradient(180deg, #f7efdc, #eddfc2); }
+.pp-lesson-title { color: #2e2a23; }
+.pp-lesson-body { color: #57503f; }
+[data-theme="light"] .pp { background: #efe9dc; border-left-color: rgba(101, 84, 50, 0.12); }
+[data-theme="light"] .pp-card { background: #fbf8f0; border-color: rgba(101, 84, 50, 0.12); }
+[data-theme="light"] .pp-prompt { background: #ede6d8; color: #3e382e; }
+[data-theme="light"] .pp-prompt:hover { background: #e5dcc6; }
+[data-theme="light"] .pp-lesson { background: #2a2620; }
+
+/* ===== SOLID PILLS: solid color, white letters, centered, glow on hover ===== */
+.pp-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: #006ced;
+  border: 1px solid #006ced;
+  color: #ffffff;
+  font-weight: 600;
+  padding: 11px 16px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.pp-prompt:hover {
+  background: #0a84ff;
+  border-color: #0a84ff;
+  box-shadow: 0 0 0 4px rgba(0, 108, 237, 0.22), 0 8px 22px rgba(0, 108, 237, 0.35);
+}
+[data-theme="light"] .pp-prompt {
+  background: #006ced;
+  border-color: #006ced;
+  color: #ffffff;
+}
+[data-theme="light"] .pp-prompt:hover {
+  background: #0a84ff;
+  border-color: #0a84ff;
+  box-shadow: 0 0 0 4px rgba(0, 108, 237, 0.22), 0 8px 22px rgba(0, 108, 237, 0.35);
+}
+
+/* ===== EDITABLE AVATAR ===== */
+.pp-avatar { position: relative; cursor: pointer; }
+.pp-avatar img.pp-avatar-custom {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.pp-avatar-edit {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: #3a352c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+.pp-avatar-edit:hover {
+  box-shadow: 0 0 0 4px rgba(0, 108, 237, 0.22), 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.pp-avatar-edit:active { transform: scale(0.94); }
+
+/* ===== SYMMETRY + WARM LESSON: uniform pills, no black box in light theme ===== */
+.pp-prompts { align-items: stretch; }
+.pp-prompt { width: 100%; min-height: 46px; box-sizing: border-box; }
+[data-theme="light"] .pp-lesson { background: linear-gradient(180deg, #f7efdc, #eddfc2); }
+[data-theme="light"] .pp-lesson-title { color: #2e2a23; }
+[data-theme="light"] .pp-lesson-body { color: #57503f; }
+[data-theme="light"] .pp-lesson-tag { color: #006ced; }
+
+/* ===== MUSE-STYLE PANEL: fixed header + tabbed scroll ===== */
+.pp {
+  height: 100%;
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+  background: #1d1a16;
+}
+[data-theme="light"] .pp { background: #f1ebdd; }
+
+.pp-fixed {
+  flex-shrink: 0;
+  padding: 30px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pp-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  padding: 4px;
+}
+[data-theme="light"] .pp-tabs {
+  background: #e7dfce;
+  border-color: rgba(101, 84, 50, 0.1);
+}
+.pp-tab {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  color: #a79f92;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.pp-tab:hover { color: #f5f2ea; }
+[data-theme="light"] .pp-tab { color: #8a8172; }
+[data-theme="light"] .pp-tab:hover { color: #211d17; }
+.pp-tab.active {
+  background: #efe9dc;
+  color: #211d17;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+[data-theme="light"] .pp-tab.active {
+  background: #ffffff;
+  color: #211d17;
+  box-shadow: 0 2px 8px rgba(60, 50, 25, 0.12);
+}
+
+.pp-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scrollbar-width: thin;
+}
+.pp-anchor { display: block; }
+
+/* Cards in the soft panel style */
+.pp .pp-card {
+  background: #262219;
+  border-color: rgba(245, 242, 234, 0.07);
+  border-radius: 18px;
+}
+[data-theme="light"] .pp .pp-card {
+  background: #ffffff;
+  border-color: rgba(101, 84, 50, 0.1);
+}
+.pp .pp-card-title { color: #f5f2ea; }
+[data-theme="light"] .pp .pp-card-title { color: #211d17; }
+
+/* Identity summary card */
+.pp-identity-card { display: flex; flex-direction: column; gap: 5px; }
+.pp-identity-name { font-size: 17px; font-weight: 700; color: #f5f2ea; }
+[data-theme="light"] .pp-identity-name { color: #211d17; }
+.pp-identity-role { font-size: 13px; line-height: 1.45; color: #a79f92; }
+[data-theme="light"] .pp-identity-role { color: #6b6252; }
+.pp-identity-vibe-label {
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #a79f92;
+  margin-top: 9px;
+}
+[data-theme="light"] .pp-identity-vibe-label { color: #8a8172; }
+.pp-identity-vibe { font-size: 13px; line-height: 1.5; color: #e8e2d4; margin: 0; }
+[data-theme="light"] .pp-identity-vibe { color: #3a352c; }
+.pp-identity-edit {
+  margin-top: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 242, 234, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f5f2ea;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+[data-theme="light"] .pp-identity-edit {
+  border-color: rgba(101, 84, 50, 0.16);
+  background: rgba(33, 29, 23, 0.04);
+  color: #211d17;
+}
+
+/* Four white squares — Soul / Memory / Identity / Persona */
+.pp-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.pp-tile {
+  aspect-ratio: 1 / 1;
+  background: #ffffff;
+  color: #211d17;
+  border: 1px solid rgba(33, 29, 23, 0.08);
+  border-radius: 18px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 3px 12px rgba(20, 16, 10, 0.16);
+  transition: transform 0.15s ease;
+  font-family: inherit;
+}
+.pp-tile:hover { transform: translateY(-2px); }
+.pp-tile-name { font-size: 15px; font-weight: 800; letter-spacing: 0.01em; }
+.pp-tile-sub { font-size: 9px; letter-spacing: 0.14em; color: #8a8172; margin-top: 3px; }
+.pp-tile-foot {
+  margin-top: auto;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pp-tile-date { font-size: 12px; font-weight: 600; color: #6b6252; }
+.pp-tile-heart { color: #dfa0b5; }
+
+/* ===== LEARN SOMETHING: uniform, symmetrical buttons ===== */
+.pp-prompts { display: flex; flex-direction: column; gap: 9px; }
+.pp-prompt {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-radius: 14px;
+  padding: 10px 16px;
+  line-height: 1.3;
+}
+
+/* ===== SPACING PASS: the Muse panel rhythm ===== */
+/* One scale everywhere: 20px sides, 18px cards, airy rows. */
+.pp-fixed { padding: 32px 20px 14px; gap: 16px; }
+.pp-profile { padding: 6px 0 2px; }
+.pp-name { margin-top: 12px; }
+.pp-status { margin-top: 3px; }
+.pp-tabs { padding: 5px; border-radius: 15px; }
+.pp-tab { height: 40px; border-radius: 11px; }
+
+.pp-scroll { padding: 10px 20px 26px; gap: 18px; }
+.pp .pp-card { padding: 18px; border-radius: 20px; }
+.pp-card-head { margin-bottom: 14px; }
+.pp .pp-card-title { font-size: 15px; }
+.pp-card-note { margin-top: 14px; line-height: 1.55; }
+
+/* Rows breathe like a feed: taller targets, steady gaps */
+.pp-watch { display: flex; flex-direction: column; gap: 4px; }
+.pp-watch-row { padding: 11px 10px; border-radius: 12px; }
+.pp-steps { gap: 6px; }
+.pp-step { padding: 7px 8px; border-radius: 10px; font-size: 14px; line-height: 1.45; }
+.pp-prompts { gap: 10px; }
+.pp-prompt { min-height: 54px; }
+
+/* Lesson card rhythm */
+.pp-lesson { gap: 8px; }
+.pp-lesson-body { line-height: 1.55; }
+
+/* Identity: card + tiles on the same rhythm */
+.pp-identity-card { gap: 7px; }
+.pp-identity-edit { height: 44px; border-radius: 999px; margin-top: 13px; }
+.pp-tiles { gap: 14px; }
+.pp-tile { padding: 16px; border-radius: 20px; }
+.pp-tile-name { font-size: 16px; }
+.pp-tile-sub { margin-top: 4px; }
+
+.pp-foot { padding: 4px 8px 6px; }
+
+/* ===== TAB BAR: thin + elegant (Muse-style capsule) ===== */
+.pp-tabs { padding: 3px; border-radius: 999px; gap: 0; }
+.pp-tab { height: 32px; border-radius: 999px; position: relative; }
+.pp-tab svg { width: 17px; height: 17px; }
+.pp-tab:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 15px;
+  background: rgba(245, 242, 234, 0.14);
+}
+[data-theme="light"] .pp-tab:not(:first-child)::before {
+  background: rgba(101, 84, 50, 0.18);
+}
+.pp-tab.active::before,
+.pp-tab.active + .pp-tab::before { display: none; }
+.pp-tab.active {
+  background: #45403a;
+  color: #f5f2ea;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+[data-theme="light"] .pp-tab.active {
+  background: #ffffff;
+  color: #211d17;
+  box-shadow: 0 1px 4px rgba(60, 50, 25, 0.14);
+}
+
+/* ===== SOFTENED WHITES: boxes sit IN the page, not on it ===== */
+[data-theme="light"] .pp .pp-card { background: #f8f3e6; }
+.pp-tile { background: #f8f3e6; }

@@ -1,0 +1,18 @@
+/* ===== TRADINGVIEW SYMBOL INFO (PlayPanel — Charts tab) ===== */
+.pp-symbol-info {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.pp-symbol-info .tradingview-widget-copyright {
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+  padding: 4px 0 0;
+  color: #9a958c;
+}
+.pp-symbol-info .tradingview-widget-copyright a {
+  color: #4b93ff;
+  text-decoration: none;
+}

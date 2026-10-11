@@ -1,0 +1,25 @@
+/* ===== TRADINGVIEW STOCK HEATMAP ===== */
+.wallie-heatmap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #131315;
+}
+.wallie-heatmap .tradingview-widget-container__widget {
+  height: 100%;
+  width: 100%;
+}
+.wallie-heatmap .tradingview-widget-copyright {
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+  padding: 4px 0;
+  color: #9a958c;
+}
+.wallie-heatmap .tradingview-widget-copyright a {
+  color: #4b93ff;
+  text-decoration: none;
+}

@@ -1,0 +1,78 @@
+{
+  "manifest_version": 3,
+  "name": "Wallie AI — Trading Assistant",
+  "version": "1.0.0",
+  "description": "AI-powered trading assistant that analyzes charts, detects signals, and provides trade ideas — right next to your charts.",
+  "permissions": [
+    "activeTab",
+    "sidePanel",
+    "storage",
+    "tabs",
+    "scripting",
+    "identity",
+    "notifications"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/panel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.tradingview.com/*",
+        "https://*.binance.com/*",
+        "https://*.coinbase.com/*",
+        "https://*.bybit.com/*",
+        "https://*.kraken.com/*",
+        "https://*.robinhood.com/*",
+        "https://*.webull.com/*",
+        "https://*.investing.com/*",
+        "https://finance.yahoo.com/*"
+      ],
+      "js": [
+        "content/platform-detector.js",
+        "content/chart-scraper.js"
+      ],
+      "css": [
+        "content/overlay.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Open Wallie AI",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "oauth2": {
+    "client_id": "17389863721-nd9m4qra2ksu0fksv88ci2p5bnk27jmp.apps.googleusercontent.com",
+    "scopes": [
+      "openid",
+      "email",
+      "profile"
+    ]
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
