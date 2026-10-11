@@ -666,3 +666,14 @@
 }
 .pp-collapse-btn:hover { background: #006ced; color: #fff; }
 [data-theme="dark"] .pp-collapse-btn { background: rgba(245, 242, 234, 0.09); }
+
+/* ===== MOBILE FULL-SCREEN MODE (driven by the bottom tab bar) ===== */
+@media (max-width: 1180px) {
+  .pp.pp-mobile-open {
+    display: flex; position: fixed; inset: 0; z-index: 90;
+    width: 100%; height: 100dvh; box-sizing: border-box;
+    padding-bottom: calc(58px + env(safe-area-inset-bottom));
+  }
+  .pp-mobile-open .pp-tabs { display: none; }
+  .pp-mobile-open .pp-collapse-btn { display: none; }
+}

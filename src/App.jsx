@@ -5,6 +5,22 @@ import Main from "./components/Main/Main";
 import Sidebar from "./components/Sidebar/Sidebar";
 import PlayPanel from "./components/PlayPanel/PlayPanel";
 import SettingsModal from "./components/Settings/SettingsModal";
+import { MessageCircle, List, BarChart3, Eye, Fingerprint } from "lucide-react";
+
+const MOBILE_TABS = [
+  { id: "chat", label: "Chat", icon: MessageCircle },
+  { id: "activity", label: "Activity", icon: List },
+  { id: "charts", label: "Charts", icon: BarChart3 },
+  { id: "watchlist", label: "Watchlist", icon: Eye },
+  { id: "identity", label: "Identity", icon: Fingerprint },
+];
+// Mobile tab ids -> PlayPanel section ids
+const MOBILE_SECTIONS = {
+  activity: "activity",
+  charts: "approvals",
+  watchlist: "upcoming",
+  identity: "identity",
+};
 import LandingPage from './components/LandingPage/LandingPage';
 import Signup from "./components/Signup";
 import Pricing from "./components/Pricing";
@@ -41,19 +57,41 @@ const PublicRoute = ({ children }) => {
 function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [mobileTab, setMobileTab] = useState("chat");
   return (
     <div className="chat-container">
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <Main onMenuClick={() => setSidebarOpen(true)} />
-      {panelOpen ? (
-        <PlayPanel onCollapse={() => setPanelOpen(false)} />
-      ) : (
+      {(panelOpen || mobileTab !== "chat") && (
+        <PlayPanel
+          onCollapse={panelOpen ? () => setPanelOpen(false) : undefined}
+          mobileSection={mobileTab === "chat" ? null : MOBILE_SECTIONS[mobileTab]}
+        />
+      )}
+      {!panelOpen && (
         <button className="panel-reopen" onClick={() => setPanelOpen(true)} title="Open Wallie panel" aria-label="Open Wallie panel">
           «
         </button>
       )}
       <SettingsModal />
+      <nav className="mobile-tabbar" aria-label="Primary">
+        {MOBILE_TABS.map((t) => {
+          const Icon = t.icon;
+          const active = mobileTab === t.id;
+          return (
+            <button
+              key={t.id}
+              className={`mtab ${active ? "active" : ""}`}
+              onClick={() => setMobileTab(t.id)}
+              aria-current={active ? "page" : undefined}
+            >
+              <Icon size={21} strokeWidth={active ? 2.2 : 1.8} />
+              <span>{t.label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }

@@ -80,10 +80,15 @@ const TILES = [
   { id: "persona", name: "PERSONA", sub: "ACCESS WITH CARE" },
 ];
 
-const PlayPanel = ({ onCollapse }) => {
+const PlayPanel = ({ onCollapse, mobileSection }) => {
   const { onSent } = useContext(Context);
   const [done, setDone] = useState(() => ROUTINE.map(() => false));
   const [tab, setTab] = useState("activity");
+
+  // Mobile: the bottom tab bar drives which section shows, full-screen
+  useEffect(() => {
+    if (mobileSection) setTab(mobileSection);
+  }, [mobileSection]);
   const soulAnchorRef = useRef(null);
 
   const toggleStep = (i) =>
@@ -185,7 +190,7 @@ const PlayPanel = ({ onCollapse }) => {
     soulAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
-    <aside className="pp">
+    <aside className={`pp${mobileSection ? " pp-mobile-open" : ""}`}>
       {/* Fixed header — presence + tab bar. Never scrolls. */}
       <div className="pp-fixed">
         {onCollapse && (
