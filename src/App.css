@@ -100,3 +100,12 @@
     height: 100dvh;
   }
 }
+
+/* ===== PANEL REOPEN TAB ===== */
+.panel-reopen {
+  position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 60;
+  width: 26px; height: 74px; border-radius: 12px 0 0 12px; border: none;
+  background: #006ced; color: #fff; font-size: 16px; cursor: pointer;
+  box-shadow: -4px 6px 18px rgba(0, 60, 140, 0.25);
+}
+.panel-reopen:hover { background: #0a84ff; }

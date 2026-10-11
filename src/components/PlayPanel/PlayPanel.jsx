@@ -1,11 +1,11 @@
 import "./PlayPanel.css";
-import { useContext, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { Context } from "../../context/Context";
 import { Pencil, List, ShieldCheck, History, Fingerprint, Heart } from "lucide-react";
 import wallieLogo from "../../assets/wallie-mark.png";
 import SoulCard from "../Soul/SoulCard";
 import ConnectCard from "../Connect/ConnectCard";
-import SymbolInfo from "../ui/symbol-info";
+import HeatMap from "../ui/heat-map";
 
 const ROUTINE = [
   "Check the market heat map",
@@ -16,7 +16,7 @@ const ROUTINE = [
   "5-minute — build the trade plan",
 ];
 
-const WATCHLIST = [
+const WATCHLIST_DEFAULT = [
   { symbol: "BTC", name: "Bitcoin" },
   { symbol: "ETH", name: "Ethereum" },
   { symbol: "SPY", name: "S&P 500 ETF" },
@@ -26,7 +26,7 @@ const WATCHLIST = [
 ];
 
 const QUICK_PROMPTS = [
-  "Teach me Fibonacci retracements like I'm a beginner",
+  "Teach me technical analysis like I'm a beginner",
   "Explain support and resistance with an example",
   "What's the overall market mood today?",
   "Quiz me on risk management",
@@ -80,7 +80,7 @@ const TILES = [
   { id: "persona", name: "PERSONA", sub: "ACCESS WITH CARE" },
 ];
 
-const PlayPanel = () => {
+const PlayPanel = ({ onCollapse }) => {
   const { onSent } = useContext(Context);
   const [done, setDone] = useState(() => ROUTINE.map(() => false));
   const [tab, setTab] = useState("activity");
@@ -89,6 +89,37 @@ const PlayPanel = () => {
   const toggleStep = (i) =>
     setDone((d) => d.map((v, idx) => (idx === i ? !v : v)));
   const doneCount = done.filter(Boolean).length;
+
+  // Watchlist — user-editable, saved on this device
+  const [watchlist, setWatchlist] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("wallie_watchlist"));
+      if (Array.isArray(saved) && saved.length) return saved;
+    } catch {
+      /* fall through to defaults */
+    }
+    return WATCHLIST_DEFAULT;
+  });
+  const [newSymbol, setNewSymbol] = useState("");
+  useEffect(() => {
+    try {
+      localStorage.setItem("wallie_watchlist", JSON.stringify(watchlist));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [watchlist]);
+  const addSymbol = () => {
+    const s = newSymbol
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9.]/g, "")
+      .slice(0, 10);
+    setNewSymbol("");
+    if (!s || watchlist.some((w) => w.symbol === s)) return;
+    setWatchlist((list) => [...list, { symbol: s, name: s }]);
+  };
+  const removeSymbol = (s) =>
+    setWatchlist((list) => list.filter((w) => w.symbol !== s));
 
   // Editable profile picture (saved on this device)
   const [avatar, setAvatar] = useState(() => {
@@ -157,6 +188,16 @@ const PlayPanel = () => {
     <aside className="pp">
       {/* Fixed header — presence + tab bar. Never scrolls. */}
       <div className="pp-fixed">
+        {onCollapse && (
+          <button
+            className="pp-collapse-btn"
+            onClick={onCollapse}
+            title="Hide panel"
+            aria-label="Hide panel"
+          >
+            »
+          </button>
+        )}
         <div className="pp-profile">
           <div
             className="pp-avatar"
@@ -241,12 +282,12 @@ const PlayPanel = () => {
             {/* Approvals — charts */}
             <div className="pp-card pp-tv-card">
               <div className="pp-card-head">
-                <span className="pp-card-title">Charts</span>
+                <span className="pp-card-title">Market heat map</span>
               </div>
-              <SymbolInfo />
+              <HeatMap />
               <p className="pp-card-note">
-                AAPL to start — more symbols land here as the chart tools
-                grow.
+                Step one of the routine — see where the money is moving
+                before you open a chart.
               </p>
             </div>
           </>
@@ -260,20 +301,40 @@ const PlayPanel = () => {
                 <span className="pp-card-title">Watchlist</span>
               </div>
               <div className="pp-watch">
-                {WATCHLIST.map((w) => (
-                  <button
-                    key={w.symbol}
-                    className="pp-watch-row"
-                    onClick={() => askAbout(w.symbol, w.name)}
-                  >
-                    <span className="pp-watch-sym">{w.symbol}</span>
-                    <span className="pp-watch-name">{w.name}</span>
-                    <span className="pp-watch-arrow">→</span>
-                  </button>
+                {watchlist.map((w) => (
+                  <div key={w.symbol} className="pp-watch-row-wrap">
+                    <button
+                      className="pp-watch-row"
+                      onClick={() => askAbout(w.symbol, w.name)}
+                    >
+                      <span className="pp-watch-sym">{w.symbol}</span>
+                      <span className="pp-watch-name">{w.name}</span>
+                      <span className="pp-watch-arrow">→</span>
+                    </button>
+                    <button
+                      className="pp-watch-remove"
+                      title={`Remove ${w.symbol}`}
+                      aria-label={`Remove ${w.symbol} from watchlist`}
+                      onClick={() => removeSymbol(w.symbol)}
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
+              <div className="pp-watch-add">
+                <input
+                  value={newSymbol}
+                  onChange={(e) => setNewSymbol(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addSymbol()}
+                  placeholder="Add a symbol — e.g. AAPL"
+                  maxLength={10}
+                />
+                <button onClick={addSymbol}>Add</button>
+              </div>
               <p className="pp-card-note">
-                Tap a market and Wallie breaks it down in the chat.
+                Tap a market and Wallie breaks it down in the chat. Your
+                list is saved on this device.
               </p>
             </div>
 
@@ -352,9 +413,6 @@ const PlayPanel = () => {
           </>
         )}
 
-        <p className="pp-foot">
-          Education only — Wallie teaches and never trades for you.
-        </p>
       </div>
     </aside>
   );

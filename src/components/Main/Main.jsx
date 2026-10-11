@@ -6,7 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import ReactMarkdown from 'react-markdown';
-import { Compass, TrendingUp, BookOpen, BarChart3 } from "lucide-react";
+import { Compass, TrendingUp, BookOpen, BarChart3, HandCoins } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 
@@ -401,6 +401,11 @@ const Main = ({ onMenuClick }) => {
             </svg>
           </button>
         )}
+        <div className="main-head-actions">
+          <button className="affiliate-pill" onClick={() => navigate("/affiliates")}>
+            <HandCoins size={15} strokeWidth={1.9} /> Affiliate
+          </button>
+        </div>
         <div className="nav-profile" ref={profileRef} style={{ display: "none" }}>
           <div onClick={() => setIsProfileOpen(!isProfileOpen)}>
             <UserAvatar size={40} />

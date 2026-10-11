@@ -1906,3 +1906,14 @@ img.listening {
   from { opacity: 1; transform: translateY(0) scale(1); }
   to { opacity: 0; transform: translateY(-14px) scale(0.98); }
 }
+
+/* ===== HEADER ACTIONS: affiliate pill (top right) ===== */
+.main .nav { display: flex; }
+.main-head-actions { margin-left: auto; display: flex; align-items: center; }
+.affiliate-pill {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px;
+  border: none; border-radius: 999px; background: #006ced; color: #fff;
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 108, 237, 0.28);
+}
+.affiliate-pill:hover { background: #0a84ff; }

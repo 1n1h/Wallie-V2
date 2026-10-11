@@ -334,11 +334,11 @@ const ContextProvider = (props) => {
       setIsStreaming(true);
       setStreamingText("");
       let charIndex = 0;
-      const speed = Math.max(5, Math.min(20, 3000 / response.length)); // adaptive speed
+      const speed = Math.max(10, Math.min(36, 7000 / response.length)); // adaptive speed — slowed down for readability
 
       streamingRef.current = setInterval(() => {
         // Stream in chunks of characters for longer responses
-        const chunkSize = response.length > 500 ? 3 : 1;
+        const chunkSize = response.length > 500 ? 2 : 1;
         charIndex = Math.min(charIndex + chunkSize, response.length);
         const partial = response.slice(0, charIndex);
         setStreamingText(partial);

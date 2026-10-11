@@ -4,6 +4,7 @@ import MaintenancePage from './components/MaintenancePage/MaintenancePage';
 import Main from "./components/Main/Main";
 import Sidebar from "./components/Sidebar/Sidebar";
 import PlayPanel from "./components/PlayPanel/PlayPanel";
+import SettingsModal from "./components/Settings/SettingsModal";
 import LandingPage from './components/LandingPage/LandingPage';
 import Signup from "./components/Signup";
 import Pricing from "./components/Pricing";
@@ -39,12 +40,20 @@ const PublicRoute = ({ children }) => {
 
 function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
   return (
     <div className="chat-container">
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <Main onMenuClick={() => setSidebarOpen(true)} />
-      <PlayPanel />
+      {panelOpen ? (
+        <PlayPanel onCollapse={() => setPanelOpen(false)} />
+      ) : (
+        <button className="panel-reopen" onClick={() => setPanelOpen(true)} title="Open Wallie panel" aria-label="Open Wallie panel">
+          «
+        </button>
+      )}
+      <SettingsModal />
     </div>
   );
 }

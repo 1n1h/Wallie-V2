@@ -1388,3 +1388,12 @@
     max-height: 90vh;
   }
 }
+
+/* ===== WALLIE SOFT THEME HARMONIZATION ===== */
+[data-theme="light"] .ig-layout { background: #f4f0e7; color: #262219; }
+[data-theme="light"] .ig-sidebar { background: #efe9dc; border-right-color: rgba(101, 84, 50, 0.14); }
+[data-theme="light"] .ig-post { border-bottom-color: rgba(101, 84, 50, 0.14); }
+[data-theme="light"] .ig-post-time { color: rgba(38, 34, 25, 0.5); }
+[data-theme="dark"] .ig-layout { background: #1b1917; color: #f2eee2; }
+[data-theme="dark"] .ig-sidebar { background: #1d1a16; border-right-color: rgba(245, 242, 234, 0.09); }
+[data-theme="dark"] .ig-post { border-bottom-color: rgba(245, 242, 234, 0.09); }

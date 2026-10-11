@@ -139,24 +139,24 @@ const Sidebar = ({ mobileOpen, onClose }) => {
           {!collapsed && <span className="sb-label">Community</span>}
         </div>
 
-        <div className="sb-icon-btn" onClick={() => { hideTip(); window.open("https://www.tiktok.com/@t.thetiktoktrader", "_blank"); }} onMouseEnter={(e) => showTip(e, "Watch Wallie on TikTok")} onMouseLeave={hideTip}>
-          <AtSign size={20} strokeWidth={1.8} />
+        <div className={`sb-socials ${collapsed ? "collapsed" : ""}`}>
+          <button className="sb-social-btn" aria-label="Wallie on TikTok" onClick={() => { hideTip(); window.open("https://www.tiktok.com/@t.thetiktoktrader", "_blank"); }} onMouseEnter={(e) => showTip(e, "Watch Wallie on TikTok")} onMouseLeave={hideTip}>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M16.6 3c.4 2.2 1.8 3.6 4 3.9v3c-1.6 0-3-.5-4-1.3v6.1c0 3.4-2.4 5.8-5.7 5.8a5.5 5.5 0 0 1-5.6-5.5c0-3.2 2.6-5.6 6-5.4v3.1c-1.6-.3-3 .7-3 2.2 0 1.4 1.1 2.4 2.5 2.4 1.6 0 2.7-1.1 2.7-2.9V3h3z" /></svg>
+          </button>
+          <button className="sb-social-btn" aria-label="Wallie on Instagram" onClick={() => { hideTip(); window.open("https://www.instagram.com/wallie_ai", "_blank"); }} onMouseEnter={(e) => showTip(e, "Wallie on Instagram")} onMouseLeave={hideTip}>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5.2" /><circle cx="12" cy="12" r="4" /><circle cx="17.3" cy="6.7" r="0.7" fill="currentColor" stroke="none" /></svg>
+          </button>
           {!collapsed && <span className="sb-label">Socials</span>}
-        </div>
-
-        <div className="sb-icon-btn" onClick={() => { hideTip(); navigate("/affiliates"); }} onMouseEnter={(e) => showTip(e, "Share Wallie, earn rewards")} onMouseLeave={hideTip}>
-          <HandCoins size={20} strokeWidth={1.8} />
-          {!collapsed && <span className="sb-label">Affiliate</span>}
         </div>
 
         <div className="sb-divider" />
 
-        <div className="sb-icon-btn" onClick={() => { hideTip(); navigate("/pricing"); }} onMouseEnter={(e) => showTip(e, "Unlock more with Pro")} onMouseLeave={hideTip}>
+        <div className="sb-icon-btn" onClick={() => { hideTip(); window.dispatchEvent(new CustomEvent("wallie:open-settings", { detail: { section: "plan" } })); }} onMouseEnter={(e) => showTip(e, "Unlock more with Pro")} onMouseLeave={hideTip}>
           <Sparkles size={20} strokeWidth={1.8} />
           {!collapsed && <span className="sb-label">Upgrade Plan</span>}
         </div>
 
-        <div className="sb-icon-btn" onClick={() => { hideTip(); navigate("/settings"); }} onMouseEnter={(e) => showTip(e, "Make it yours")} onMouseLeave={hideTip}>
+        <div className="sb-icon-btn" onClick={() => { hideTip(); window.dispatchEvent(new CustomEvent("wallie:open-settings", { detail: { section: "general" } })); }} onMouseEnter={(e) => showTip(e, "Make it yours")} onMouseLeave={hideTip}>
           <Settings size={20} strokeWidth={1.8} />
           {!collapsed && <span className="sb-label">Settings</span>}
         </div>
@@ -186,7 +186,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
                 zIndex: 200,
               }}
             >
-              <div className="sb-menu-item" onClick={() => { setProfileOpen(false); navigate("/pricing"); }}>
+              <div className="sb-menu-item" onClick={() => { setProfileOpen(false); window.dispatchEvent(new CustomEvent("wallie:open-settings", { detail: { section: "plan" } })); }}>
                 <Sparkles size={16} strokeWidth={1.8} /> Upgrade Plan
               </div>
               <div className="sb-menu-item" onClick={() => { setProfileOpen(false); navigate("/community"); }}>
