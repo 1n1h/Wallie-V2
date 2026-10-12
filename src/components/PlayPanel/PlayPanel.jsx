@@ -6,6 +6,7 @@ import wallieLogo from "../../assets/wallie-mark.png";
 import SoulCard from "../Soul/SoulCard";
 import ConnectCard from "../Connect/ConnectCard";
 import HeatMap from "../ui/heat-map";
+import WatchCard from "./WatchCard";
 
 const ROUTINE = [
   "Check the market heat map",
@@ -125,6 +126,20 @@ const PlayPanel = ({ onCollapse, mobileSection }) => {
   };
   const removeSymbol = (s) =>
     setWatchlist((list) => list.filter((w) => w.symbol !== s));
+
+  // Chart-read action chips in the chat can add a symbol — merge it into
+  // the live list (the save effect above persists it).
+  useEffect(() => {
+    const onAdd = (e) => {
+      const s = e?.detail?.symbol;
+      if (!s) return;
+      setWatchlist((list) =>
+        list.some((w) => w.symbol === s) ? list : [...list, { symbol: s, name: s }]
+      );
+    };
+    window.addEventListener("wallie:watchlist-add", onAdd);
+    return () => window.removeEventListener("wallie:watchlist-add", onAdd);
+  }, []);
 
   // Editable profile picture (saved on this device)
   const [avatar, setAvatar] = useState(() => {
@@ -279,6 +294,9 @@ const PlayPanel = ({ onCollapse, mobileSection }) => {
                 ))}
               </div>
             </div>
+
+            {/* Level watches + reminders set from chart reads */}
+            <WatchCard />
           </>
         )}
 

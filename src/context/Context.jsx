@@ -315,7 +315,10 @@ const ContextProvider = (props) => {
       }
       const composedPersona = personaParts.length ? personaParts.join("\n\n") : undefined;
 
-      const response = await runChat(userMessage, selectedImage, chatHistory, composedPersona);
+      const res = await runChat(userMessage, selectedImage, chatHistory, composedPersona);
+      const response = res.text;
+      const aiPlot = res.plot ? { image: newUserMsg.image, drawings: res.plot.drawings || [] } : null;
+      const aiActions = res.actions || null;
       setLoading(false);
 
       // Increment message count for free users after successful response
@@ -325,6 +328,8 @@ const ContextProvider = (props) => {
       const newAiMsg = {
         type: 'ai',
         message: "",
+        plot: aiPlot,
+        actions: aiActions,
         chatId: currentChatId
       };
       const historyWithAi = [...updatedHistory, newAiMsg];
@@ -357,7 +362,7 @@ const ContextProvider = (props) => {
           setStreamingText("");
 
           // Final update with complete message
-          const finalHistory = [...updatedHistory, { type: 'ai', message: response, chatId: currentChatId }];
+          const finalHistory = [...updatedHistory, { type: 'ai', message: response, plot: aiPlot, actions: aiActions, chatId: currentChatId }];
           setChatHistory(finalHistory);
           saveCurrentChat(finalHistory);
           setResultData(response);

@@ -3,10 +3,10 @@ import { assets } from "../../assets/assets";
 import { useContext, useState, useEffect, useRef } from "react";
 import { Context } from "../../context/Context";
 import { useAuth } from "../../context/AuthContext";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, arrayUnion } from "firebase/firestore";
 import { db } from "../../firebase";
 import ReactMarkdown from 'react-markdown';
-import { Compass, TrendingUp, BookOpen, BarChart3, HandCoins } from "lucide-react";
+import { Compass, TrendingUp, BookOpen, BarChart3, HandCoins, Eye, Bell, Plus, GraduationCap, Check } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 
@@ -17,6 +17,72 @@ const GREETINGS = [
   "Let's make moves,", "Time to trade,", "Welcome aboard,", "Salute,",
   "Great to have you,", "Let's secure the bag,",
 ];
+
+// Chart Plot: Wallie's levels drawn back onto the user's chart. Drawings use
+// percentage coordinates (0-100) from the vision model; shapes render as an
+// SVG layer and labels as HTML pills so text never distorts.
+const PLOT_TONES = {
+  support: { stroke: "#3fb27f", fill: "rgba(63,178,127,0.20)", label: "#35a06c" },
+  resistance: { stroke: "#e05d5d", fill: "rgba(224,93,93,0.20)", label: "#d64545" },
+  trend: { stroke: "#4B90FF", fill: "rgba(75,144,255,0.20)", label: "#4B90FF" },
+};
+
+const PlotFigure = ({ plot }) => {
+  if (!plot?.image || !plot.drawings?.length) return null;
+  return (
+    <div className="plot-figure">
+      <img src={plot.image} alt="Your chart with Wallie's levels drawn on" />
+      <svg className="plot-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {plot.drawings.map((d, i) => {
+          const t = PLOT_TONES[d.tone] || PLOT_TONES.trend;
+          if (d.type === "zone") {
+            return (
+              <rect
+                key={i}
+                x={Math.min(d.x1, d.x2)}
+                y={Math.min(d.y1, d.y2)}
+                width={Math.max(Math.abs(d.x2 - d.x1), 0.6)}
+                height={Math.max(Math.abs(d.y2 - d.y1), 0.6)}
+                fill={t.fill}
+                stroke={t.stroke}
+                strokeWidth="0.5"
+                rx="0.6"
+              />
+            );
+          }
+          return (
+            <line
+              key={i}
+              x1={d.x1}
+              y1={d.y1}
+              x2={d.x2}
+              y2={d.y2}
+              stroke={t.stroke}
+              strokeWidth="0.7"
+              strokeLinecap="round"
+            />
+          );
+        })}
+      </svg>
+      {plot.drawings.map((d, i) =>
+        d.label ? (
+          <span
+            key={`label-${i}`}
+            className="plot-label"
+            style={{
+              left: `${Math.min(d.x1, d.x2)}%`,
+              top: `${Math.min(d.y1, d.y2)}%`,
+              color: (PLOT_TONES[d.tone] || PLOT_TONES.trend).label,
+            }}
+          >
+            {d.label}
+          </span>
+        ) : null
+      )}
+      <span className="plot-caption">Wallie's levels, drawn from this read</span>
+    </div>
+  );
+};
 
 const Main = ({ onMenuClick }) => {
   const [imageQuestion, setImageQuestion] = useState("");
@@ -289,7 +355,7 @@ const Main = ({ onMenuClick }) => {
 
   // ===== Chart analysis: verdict contract + watch mode =====
   const ANALYZE_PROMPT =
-    "Analyze this chart like my trading coach. Start your reply with a verdict line in exactly this format: VERDICT: BULLISH 72% (or BEARISH, or NEUTRAL, with your confidence from 0 to 100). Then give me: the key support and resistance levels you see, the trend and any patterns, confluence if you spot it, and one lesson I should take from this chart. Educational analysis only — never tell me to buy or sell.";
+    "Analyze this chart like my trading coach. Give me your verdict (bullish, bearish, or neutral, with a confidence from 0 to 100) and: the key support and resistance levels you see, the trend and any patterns, confluence if you spot it, and one lesson I should take from this chart. Educational analysis only — never tell me to buy or sell.";
   const WATCH_PROMPT =
     "Session watch update. Start with the verdict line in exactly this format: VERDICT: BULLISH 72% (or BEARISH, or NEUTRAL, with your confidence from 0 to 100). Then in one or two short lines: what changed on this chart since the last update, and what I should be watching now. Educational analysis only.";
   const pendingRef = useRef(null);
@@ -387,6 +453,112 @@ const Main = ({ onMenuClick }) => {
     } catch (err) {
       if (err.name !== "NotAllowedError") console.error("Watch mode failed:", err);
     }
+  };
+
+  // Action chips: tappable follow-ups under a chart read. Each one DOES
+  // something — saves a level watch or a reminder to the user's account,
+  // adds the symbol to the watchlist, or starts the lesson.
+  const ActionChips = ({ actions }) => {
+    const [done, setDone] = useState({});
+    if (!actions?.length) return null;
+    const mark = (i, note) => setDone((d) => ({ ...d, [i]: note }));
+    const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+    const nextOpenISO = () => {
+      const etNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+      const d = new Date(etNow);
+      d.setHours(9, 25, 0, 0);
+      if (etNow >= d) d.setDate(d.getDate() + 1);
+      while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+      return d.toISOString();
+    };
+    const doWatch = async (a, i) => {
+      if (!user) return;
+      const item = {
+        id: uid(),
+        symbol: a.symbol || "CHART",
+        label: a.label,
+        level: typeof a.level === "number" ? a.level : null,
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        await setDoc(doc(db, "users", user.uid), { watches: arrayUnion(item) }, { merge: true });
+        mark(i, "Watching this level");
+      } catch (e) {
+        console.error("Save watch failed:", e);
+        mark(i, "Couldn't save — try again");
+      }
+    };
+    const doRemind = async (a, i) => {
+      if (!user) return;
+      const dueAt = a.when === "4h" ? new Date(Date.now() + 4 * 3600 * 1000).toISOString() : nextOpenISO();
+      const item = {
+        id: uid(),
+        symbol: a.symbol || null,
+        note: a.label,
+        dueAt,
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        await setDoc(doc(db, "users", user.uid), { reminders: arrayUnion(item) }, { merge: true });
+        mark(i, "Reminder set");
+      } catch (e) {
+        console.error("Save reminder failed:", e);
+        mark(i, "Couldn't save — try again");
+      }
+    };
+    const doWatchlist = (a, i) => {
+      const sym = (a.symbol || "").toUpperCase().replace(/[^A-Z0-9.]/g, "").slice(0, 10);
+      if (!sym) {
+        mark(i, "No symbol on this chart");
+        return;
+      }
+      try {
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem("wallie_watchlist")); } catch { saved = null; }
+        if (!Array.isArray(saved)) {
+          saved = [
+            { symbol: "BTC", name: "Bitcoin" },
+            { symbol: "ETH", name: "Ethereum" },
+            { symbol: "SPY", name: "S&P 500 ETF" },
+            { symbol: "QQQ", name: "Nasdaq 100 ETF" },
+            { symbol: "GOLD", name: "Gold" },
+            { symbol: "US30", name: "Dow Jones" },
+          ];
+        }
+        if (!saved.some((w) => w.symbol === sym)) {
+          saved.push({ symbol: sym, name: sym });
+          localStorage.setItem("wallie_watchlist", JSON.stringify(saved));
+        }
+      } catch { /* storage unavailable */ }
+      window.dispatchEvent(new CustomEvent("wallie:watchlist-add", { detail: { symbol: sym } }));
+      mark(i, "Added to watchlist");
+    };
+    const doTeach = (a, i) => {
+      const topic = a.topic || a.label.replace(/^Teach me:?\s*/i, "");
+      mark(i, "Lesson started");
+      onSent(`Teach me about ${topic} like I'm a beginner — plain words, one simple example, and how to spot it on a chart.`);
+    };
+    const ICONS = { watch: Eye, remind: Bell, watchlist: Plus, teach: GraduationCap };
+    const HANDLERS = { watch: doWatch, remind: doRemind, watchlist: doWatchlist, teach: doTeach };
+    return (
+      <div className="action-chips">
+        {actions.map((a, i) => {
+          const Icon = ICONS[a.kind] || Plus;
+          const doneNote = done[i];
+          return (
+            <button
+              key={i}
+              className={`action-chip ${doneNote ? "done" : ""}`}
+              disabled={!!doneNote}
+              onClick={() => HANDLERS[a.kind]?.(a, i)}
+            >
+              {doneNote ? <Check size={14} strokeWidth={2.4} /> : <Icon size={14} strokeWidth={2.2} />}
+              <span>{doneNote || a.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
@@ -495,9 +667,11 @@ const Main = ({ onMenuClick }) => {
                             </div>
                           );
                         })()}
+                        {message.plot && <PlotFigure plot={message.plot} />}
                         <div className={`markdown-content ${showCursor ? "streaming-cursor" : ""}`}>
                           <ReactMarkdown>{message.message.replace(/^\s*VERDICT:\s*(BULLISH|BEARISH|NEUTRAL)\s+\d{1,3}\s*%.*$/im, "").trim()}</ReactMarkdown>
                         </div>
+                        {message.actions && !showCursor && <ActionChips actions={message.actions} />}
                         <div className="response-controls">
                           <div className="control-buttons">
                             <button

@@ -677,3 +677,28 @@
   .pp-mobile-open .pp-tabs { display: none; }
   .pp-mobile-open .pp-collapse-btn { display: none; }
 }
+
+/* ===== Watching & reminders card (set from chart-read chips) ===== */
+.wc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 2px;
+  border-bottom: 1px solid rgba(140, 130, 115, 0.16);
+}
+.wc-row:last-of-type { border-bottom: none; }
+.wc-ic { flex: none; opacity: 0.75; }
+.wc-main { flex: 1; font-size: 13px; line-height: 1.35; }
+.wc-due .wc-main { font-weight: 600; color: #d64545; }
+.wc-x {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.wc-x:hover { opacity: 1; }

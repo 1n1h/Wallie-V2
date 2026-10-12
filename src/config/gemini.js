@@ -71,9 +71,17 @@ export default async function runChat(prompt, imageFile = null, chatHistory = []
     }
 
     const result = await callFunction("chat", payload);
-    return result.response;
+    return {
+      text: result.response,
+      plot: result.plot || null,
+      actions: result.actions || null,
+    };
   } catch (error) {
     console.error("Error in runChat:", error);
-    return "I'm sorry, I encountered an error while processing your request. Please try again later.";
+    return {
+      text: "I'm sorry, I encountered an error while processing your request. Please try again later.",
+      plot: null,
+      actions: null,
+    };
   }
 }
