@@ -34,7 +34,7 @@ const PLOT_FORMAT_INSTRUCTION = `
 CHART PLOT FORMAT (required)
 -----------------------
 This is an ANALYZE request. This format OVERRIDES any earlier formatting instruction: do NOT start with a VERDICT line and do NOT write any prose outside the JSON. Reply with ONLY a JSON object in exactly this shape:
-{"verdict":"BULLISH" or "BEARISH" or "NEUTRAL","confidence":0-100,"read":"your full educational read in markdown — key support/resistance levels, trend and patterns, confluence, and one lesson — the same quality as a normal reply, just without a verdict line","drawings":[up to 6 items],"actions":[2 to 4 items]}
+{"verdict":"BULLISH" or "BEARISH" or "NEUTRAL","confidence":0-100,"read":"your educational read in markdown — key support/resistance levels, trend and patterns, confluence, and one lesson — just without a verdict line. Keep it tight, roughly 250-400 words: the drawings carry the levels, so do not list every price twice","drawings":[up to 6 items],"actions":[2 to 4 items]}
 drawings mark the exact levels and zones your read describes, so the app can draw them on the user's chart. Coordinates are PERCENTAGES of the image: x runs 0-100 left to right, y runs 0-100 TOP to bottom.
 - Zone: {"type":"zone","tone":"support" or "resistance","x1":left,"y1":top,"x2":right,"y2":bottom,"label":"Support 4,000-4,150"}
 - Line: {"type":"line","tone":"trend" or "support" or "resistance","x1":start x,"y1":start y,"x2":end x,"y2":end y,"label":"Downtrend line"}
@@ -1109,7 +1109,7 @@ exports.chat = onCall(
         messages.push({
           role: "user",
           content: [
-            { type: "text", text: prompt },
+            { type: "text", text: wantsPlot ? `${prompt} — answer ONLY as the JSON envelope described in your instructions (verdict, confidence, read, drawings, actions). No prose outside the JSON.` : prompt },
             { type: "image_url", image_url: { url: `data:${imageMimeType};base64,${imageBase64}` } },
           ],
         });
