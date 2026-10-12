@@ -10,6 +10,7 @@ const db = getFirestore();
 // Secrets â€” changeable via: firebase functions:secrets:set SECRET_NAME
 const togetherKey = defineSecret("TOGETHER_API_KEY");
 const geminiKey = defineSecret("GEMINI_API_KEY");
+const metaKey = defineSecret("META_MODEL_API_KEY");
 
 
 const TOGETHER_API_URL = "https://api.together.xyz/v1/chat/completions";
@@ -20,6 +21,10 @@ const VISION_MODEL = "meta-llama/Llama-Vision-Free";
 // next one automatically.
 const GEMINI_VISION_MODELS = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"];
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+// Vision primary: Meta Model API (Muse Spark). It is OpenAI-compatible, so
+// the OpenAI-style messages array goes as-is. Gemini stays as the fallback.
+const META_API_URL = "https://api.meta.ai/v1/chat/completions";
+const SPARK_VISION_MODEL = "muse-spark-1.3";
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // TECHNICAL ANALYSIS â€” computed from free Yahoo/CoinGecko OHLCV data
@@ -806,6 +811,42 @@ async function callTogetherAI(messages, apiKey, { model, maxTokens = 8192, tempe
 // CLOUD FUNCTIONS
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
+// Sends the OpenAI-style messages array to the Meta Model API (Muse Spark)
+// and returns a Together-shaped result, so the chat handler's response
+// handling stays identical. Spark is the primary vision route; Gemini is the
+// fallback (see the chat handler). jsonMode is accepted for signature parity
+// with callGeminiVision; v1 relies on the prompt-level JSON instruction plus
+// the handler's existing parsing instead of a response_format constraint.
+async function callSparkVision(messages, apiKey, { temperature = 0.7, jsonMode = false } = {}) {
+  const body = {
+    model: SPARK_VISION_MODEL,
+    messages,
+    temperature,
+    max_tokens: 8192,
+  };
+  const res = await fetch(META_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error("Spark vision error:", res.status, errBody);
+    throw new Error(`Meta Model API error: ${res.status}`);
+  }
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content || "";
+  if (!text) throw new Error("Meta Model API returned an empty response");
+  console.log(`Spark vision answered with ${SPARK_VISION_MODEL}`);
+  return {
+    choices: [{ message: { content: text } }],
+    usage: data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+  };
+}
+
 // Converts the OpenAI-style messages array (built for Together) into a Gemini
 // generateContent call and returns a Together-shaped result, so the chat
 // handler's response handling stays identical.
@@ -875,7 +916,7 @@ async function callGeminiVision(messages, apiKey, { temperature = 0.7, jsonMode 
 }
 
 exports.chat = onCall(
-  { secrets: [togetherKey, geminiKey], timeoutSeconds: 120, cors: true },
+  { secrets: [togetherKey, geminiKey, metaKey], timeoutSeconds: 120, cors: true },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "You must be signed in to use Wallie.");
@@ -1036,12 +1077,20 @@ exports.chat = onCall(
       // â”€â”€â”€ Call LLM â”€â”€â”€
       let data;
       if (hasImage) {
-        // Images go to Gemini: Together's serverless vision catalog is not
-        // reachable on this account. Text-only requests stay on Together.
-        data = await callGeminiVision(messages, geminiKey.value().trim(), {
-          temperature: signalMode ? 0.2 : 0.7,
-          jsonMode: !!signalMode,
-        });
+        // Images go to Muse Spark (Meta Model API) first, with Gemini as
+        // the fallback. Text-only requests stay on Together.
+        try {
+          data = await callSparkVision(messages, metaKey.value().trim(), {
+            temperature: signalMode ? 0.2 : 0.7,
+            jsonMode: !!signalMode,
+          });
+        } catch (sparkErr) {
+          console.error("Spark vision failed, falling back to Gemini:", sparkErr);
+          data = await callGeminiVision(messages, geminiKey.value().trim(), {
+            temperature: signalMode ? 0.2 : 0.7,
+            jsonMode: !!signalMode,
+          });
+        }
       } else {
         data = await callTogetherAI(messages, apiKey, {
           model,
