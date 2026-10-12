@@ -1996,3 +1996,19 @@ img.listening {
   color: #35a06c;
   cursor: default;
 }
+
+/* Action chips — explicit per-theme colors (the shared text variable stays
+   near-white in light theme, which made the labels invisible on tan). */
+.action-chip { color: #f1f1f4; }
+[data-theme="light"] .action-chip {
+  color: #26221c;
+  border-color: rgba(90, 80, 65, 0.45);
+}
+[data-theme="light"] .action-chip:hover:not(:disabled) {
+  border-color: #006ced;
+  color: #006ced;
+}
+[data-theme="light"] .action-chip.done {
+  border-color: rgba(47, 125, 84, 0.6);
+  color: #2f7d54;
+}
