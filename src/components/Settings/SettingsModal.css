@@ -113,3 +113,19 @@
   background: #b23a26; color: #fff; font: inherit; font-size: 13px; font-weight: 600;
 }
 .sm-confirm-btn:disabled { opacity: 0.6; cursor: wait; }
+
+/* Appearance — Dark/Light segmented control */
+.sm-theme-row {
+  display: flex; gap: 6px; padding: 5px; border-radius: 14px;
+  background: rgba(101, 84, 50, 0.08);
+}
+[data-theme="dark"] .sm-theme-row { background: rgba(245, 242, 234, 0.07); }
+.sm-theme-btn {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 38px; border: none; border-radius: 10px; cursor: pointer;
+  background: transparent; color: inherit; opacity: 0.65;
+  font: inherit; font-size: 13.5px; font-weight: 600;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+.sm-theme-btn:hover { opacity: 1; }
+.sm-theme-btn.active { background: #006ced; color: #fff; opacity: 1; }

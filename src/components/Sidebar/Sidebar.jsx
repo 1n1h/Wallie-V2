@@ -15,7 +15,11 @@ import {
   Settings,
   Lock,
   LogOut,
+  Sun,
+  Moon,
 } from "lucide-react";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "../../firebase";
 
 const Sidebar = ({ mobileOpen, onClose }) => {
   const {
@@ -60,6 +64,38 @@ const Sidebar = ({ mobileOpen, onClose }) => {
   const hideTip = () => {
     clearTimeout(tipTimer.current);
     setTip(null);
+  };
+
+  // Theme: quick sun/moon toggle. The attribute on <html> is the source of
+  // truth; a MutationObserver keeps this button in sync when the theme is
+  // changed elsewhere (e.g. the Settings pop-out).
+  const [theme, setThemeState] = useState(
+    () => document.documentElement.getAttribute("data-theme") || "dark",
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    const sync = () => setThemeState(el.getAttribute("data-theme") || "dark");
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, []);
+
+  const toggleTheme = async () => {
+    const next = theme === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    setThemeState(next);
+    if (user) {
+      try {
+        await setDoc(
+          doc(db, "users", user.uid),
+          { settings: { theme: next } },
+          { merge: true },
+        );
+      } catch {
+        /* theme still applies on this device */
+      }
+    }
   };
 
   const profileName = user?.displayName || (user?.email ? user.email.split("@")[0] : "Account");
@@ -159,6 +195,11 @@ const Sidebar = ({ mobileOpen, onClose }) => {
         <div className="sb-icon-btn" onClick={() => { hideTip(); window.dispatchEvent(new CustomEvent("wallie:open-settings", { detail: { section: "general" } })); }} onMouseEnter={(e) => showTip(e, "Make it yours")} onMouseLeave={hideTip}>
           <Settings size={20} strokeWidth={1.8} />
           {!collapsed && <span className="sb-label">Settings</span>}
+        </div>
+
+        <div className="sb-icon-btn" onClick={() => { hideTip(); toggleTheme(); }} onMouseEnter={(e) => showTip(e, theme === "dark" ? "Switch to light mode" : "Switch to dark mode")} onMouseLeave={hideTip}>
+          {theme === "dark" ? <Sun size={20} strokeWidth={1.8} /> : <Moon size={20} strokeWidth={1.8} />}
+          {!collapsed && <span className="sb-label">{theme === "dark" ? "Light mode" : "Dark mode"}</span>}
         </div>
 
         <div className="sb-divider" />

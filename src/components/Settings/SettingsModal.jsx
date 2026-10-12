@@ -2,8 +2,8 @@ import "./SettingsModal.css";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { X, Sparkles, LogOut, Trash2, Mail, HardDrive } from "lucide-react";
-import { doc, deleteDoc } from "firebase/firestore";
+import { X, Sparkles, LogOut, Trash2, Mail, HardDrive, Sun, Moon } from "lucide-react";
+import { doc, deleteDoc, setDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthContext";
 import ConnectCard from "../Connect/ConnectCard";
@@ -45,9 +45,40 @@ const SettingsModal = () => {
     Object.fromEntries(PERM_DEFS.map((p) => [p.key, readPerm(p.key)])),
   );
   const planRef = useRef(null);
+  const appRef = useRef(null);
   const connRef = useRef(null);
   const permRef = useRef(null);
   const acctRef = useRef(null);
+
+  // Appearance: the data-theme attribute on <html> is the source of truth;
+  // a MutationObserver keeps this control in sync with the sidebar toggle.
+  const [theme, setThemeState] = useState(
+    () => document.documentElement.getAttribute("data-theme") || "dark",
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    const sync = () => setThemeState(el.getAttribute("data-theme") || "dark");
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, []);
+
+  const applyTheme = async (next) => {
+    document.documentElement.setAttribute("data-theme", next);
+    setThemeState(next);
+    if (user) {
+      try {
+        await setDoc(
+          doc(db, "users", user.uid),
+          { settings: { theme: next } },
+          { merge: true },
+        );
+      } catch {
+        /* theme still applies on this device */
+      }
+    }
+  };
 
   useEffect(() => {
     const handler = (e) => {
@@ -64,11 +95,13 @@ const SettingsModal = () => {
     const target =
       section === "plan"
         ? planRef.current
-        : section === "connections"
-          ? connRef.current
-          : section === "permissions"
-            ? permRef.current
-            : null;
+        : section === "appearance"
+          ? appRef.current
+          : section === "connections"
+            ? connRef.current
+            : section === "permissions"
+              ? permRef.current
+              : null;
     if (target) {
       const t = setTimeout(
         () => target.scrollIntoView({ behavior: "smooth", block: "start" }),
@@ -163,6 +196,27 @@ const SettingsModal = () => {
                 }}
               >
                 <Sparkles size={15} /> See plans
+              </button>
+            </div>
+          </section>
+
+          {/* Appearance */}
+          <section className="sm-section" ref={appRef}>
+            <h3 className="sm-section-title">Appearance</h3>
+            <div className="sm-theme-row">
+              <button
+                className={`sm-theme-btn ${theme === "dark" ? "active" : ""}`}
+                onClick={() => applyTheme("dark")}
+                aria-pressed={theme === "dark"}
+              >
+                <Moon size={15} /> Dark
+              </button>
+              <button
+                className={`sm-theme-btn ${theme === "light" ? "active" : ""}`}
+                onClick={() => applyTheme("light")}
+                aria-pressed={theme === "light"}
+              >
+                <Sun size={15} /> Light
               </button>
             </div>
           </section>
