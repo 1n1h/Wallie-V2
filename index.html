@@ -29,6 +29,10 @@
 
   <!-- Theme color -->
   <meta name="theme-color" content="#0057B8" />
+  <!-- Theme boot: default to dark before first paint, so [data-theme=dark] styles apply from the start. The app (theme toggle / saved settings) can switch to light after load. -->
+  <script>
+    if (!document.documentElement.getAttribute('data-theme')) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  </script>
 </head>
 
 <body>
