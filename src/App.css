@@ -151,3 +151,8 @@
   }
   .chat-container .mtab.active { color: #006ced; opacity: 1; }
 }
+
+/* ===== MOBILE TAB BAR v3: .main height fix ===== */
+@media (max-width: 1180px) {
+  .chat-container .main { height: auto; min-height: 0; }
+}
