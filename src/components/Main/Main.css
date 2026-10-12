@@ -2012,3 +2012,10 @@ img.listening {
   border-color: rgba(47, 125, 84, 0.6);
   color: #2f7d54;
 }
+
+/* Action chips clearance: the speak/copy controls overlay the bottom of
+   the response on wide viewports — reserve a band so they never collide. */
+.action-chips { margin-bottom: 10px; }
+@media (min-width: 769px) {
+  .action-chips { margin-bottom: 48px; }
+}
