@@ -823,7 +823,7 @@ async function callSparkVision(messages, apiKey, { temperature = 0.7, jsonMode =
     model: SPARK_VISION_MODEL,
     messages,
     temperature,
-    max_tokens: 1200,
+    max_tokens: 4096,
   };
   const res = await fetch(META_API_URL, {
     method: "POST",
@@ -839,8 +839,21 @@ async function callSparkVision(messages, apiKey, { temperature = 0.7, jsonMode =
     throw new Error(`Meta Model API error: ${res.status}`);
   }
   const data = await res.json();
-  const text = data.choices?.[0]?.message?.content || "";
-  if (!text) throw new Error("Meta Model API returned an empty response");
+  const msg = data.choices?.[0]?.message || {};
+  let text = msg.content || "";
+  if (Array.isArray(text)) {
+    text = text.map((p) => (typeof p === "string" ? p : p.text || "")).join("");
+  }
+  if (!text) {
+    console.error("Spark empty-content diagnostics:", JSON.stringify({
+      finish_reason: data.choices?.[0]?.finish_reason ?? null,
+      usage: data.usage ?? null,
+      message_keys: Object.keys(msg),
+      reasoning_len: typeof msg.reasoning_content === "string" ? msg.reasoning_content.length : null,
+      content_type: typeof msg.content,
+    }).slice(0, 800));
+    throw new Error("Meta Model API returned an empty response");
+  }
   console.log(`Spark vision answered with ${SPARK_VISION_MODEL} in ${Date.now() - startedAt}ms (in ${data.usage?.prompt_tokens ?? "?"} / out ${data.usage?.completion_tokens ?? "?"} tokens)`);
   return {
     choices: [{ message: { content: text } }],
