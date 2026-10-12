@@ -25,6 +25,26 @@ const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models
 // the OpenAI-style messages array goes as-is. Gemini stays as the fallback.
 const META_API_URL = "https://api.meta.ai/v1/chat/completions";
 const SPARK_VISION_MODEL = "muse-spark-1.3";
+// Chart Plot format: ANALYZE image requests answer as a JSON envelope so the
+// app can draw the levels on the user's chart (drawings) and offer tappable
+// follow-ups (actions). The handler converts the envelope back into the
+// classic "VERDICT: ... + read" text contract, so nothing downstream changes.
+const PLOT_FORMAT_INSTRUCTION = `
+-----------------------
+CHART PLOT FORMAT (required)
+-----------------------
+This is an ANALYZE request. This format OVERRIDES any earlier formatting instruction: do NOT start with a VERDICT line and do NOT write any prose outside the JSON. Reply with ONLY a JSON object in exactly this shape:
+{"verdict":"BULLISH" or "BEARISH" or "NEUTRAL","confidence":0-100,"read":"your full educational read in markdown — key support/resistance levels, trend and patterns, confluence, and one lesson — the same quality as a normal reply, just without a verdict line","drawings":[up to 6 items],"actions":[2 to 4 items]}
+drawings mark the exact levels and zones your read describes, so the app can draw them on the user's chart. Coordinates are PERCENTAGES of the image: x runs 0-100 left to right, y runs 0-100 TOP to bottom.
+- Zone: {"type":"zone","tone":"support" or "resistance","x1":left,"y1":top,"x2":right,"y2":bottom,"label":"Support 4,000-4,150"}
+- Line: {"type":"line","tone":"trend" or "support" or "resistance","x1":start x,"y1":start y,"x2":end x,"y2":end y,"label":"Downtrend line"}
+Only draw levels you can actually see on the chart. Keep labels short.
+actions are tappable follow-ups the app will offer under your read. Ground them in THIS chart. Allowed kinds:
+- {"kind":"watch","label":"Watch the 4,000 support","symbol":"XAUUSD","level":4000} — level is the one price that matters, or null.
+- {"kind":"remind","label":"Remind me at tomorrow's open","symbol":"XAUUSD","when":"open"} — when is "open", "4h", or "tomorrow".
+- {"kind":"watchlist","label":"Add XAUUSD to my watchlist","symbol":"XAUUSD"}
+- {"kind":"teach","label":"Teach me: blow-off tops","topic":"blow-off tops"}
+symbol is the instrument shown on the chart (XAUUSD, BTCUSD, US30, AAPL...), or null if you cannot read it.`;
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // TECHNICAL ANALYSIS â€” computed from free Yahoo/CoinGecko OHLCV data
@@ -817,13 +837,13 @@ async function callTogetherAI(messages, apiKey, { model, maxTokens = 8192, tempe
 // fallback (see the chat handler). jsonMode is accepted for signature parity
 // with callGeminiVision; v1 relies on the prompt-level JSON instruction plus
 // the handler's existing parsing instead of a response_format constraint.
-async function callSparkVision(messages, apiKey, { temperature = 0.7, jsonMode = false } = {}) {
+async function callSparkVision(messages, apiKey, { temperature = 0.7, jsonMode = false, maxTokens = 4096 } = {}) {
   const startedAt = Date.now();
   const body = {
     model: SPARK_VISION_MODEL,
     messages,
     temperature,
-    max_tokens: 4096,
+    max_tokens: maxTokens,
   };
   const res = await fetch(META_API_URL, {
     method: "POST",
@@ -1060,6 +1080,14 @@ exports.chat = onCall(
       }
 
       // â”€â”€â”€ Build messages â”€â”€â”€
+      // Chart Plot: ANALYZE image requests (not signal mode, not LOOK
+      // frames) answer in the JSON envelope described above.
+      const wantsPlot =
+        hasImage && !signalMode && typeof prompt === "string" && prompt.trim().toUpperCase() === "ANALYZE";
+      if (wantsPlot) {
+        finalSystemPrompt += PLOT_FORMAT_INSTRUCTION;
+      }
+
       const messages = [{ role: "system", content: finalSystemPrompt }];
 
       // Conversation history with image context notes
@@ -1099,6 +1127,7 @@ exports.chat = onCall(
           data = await callSparkVision(messages, metaKey.value().trim(), {
             temperature: signalMode ? 0.2 : 0.7,
             jsonMode: !!signalMode,
+            maxTokens: wantsPlot ? 5120 : 4096,
           });
         } catch (sparkErr) {
           console.error("Spark vision failed, falling back to Gemini:", sparkErr);
@@ -1124,9 +1153,64 @@ exports.chat = onCall(
         .replace(/<\|.*?\|>/g, "")
         .trim();
 
+      // Chart Plot envelope: convert the model's JSON back into the classic
+      // text contract (VERDICT line + read) and carry the drawings + action
+      // suggestions alongside for the app to render.
+      let plot = null;
+      let plotActions = null;
+      if (wantsPlot && textResponse) {
+        try {
+          const clean = textResponse.replace(/```json/gi, "").replace(/```/g, "").trim();
+          const env = JSON.parse(clean);
+          const bias = String(env.verdict || "").toUpperCase();
+          if (["BULLISH", "BEARISH", "NEUTRAL"].includes(bias) && typeof env.read === "string" && env.read.trim()) {
+            const conf = Math.max(0, Math.min(100, parseInt(env.confidence, 10) || 0));
+            textResponse = `VERDICT: ${bias} ${conf}%\n\n${env.read.trim()}`;
+            const coord = (v) => Math.max(0, Math.min(100, Number(v) || 0));
+            if (Array.isArray(env.drawings)) {
+              const drawings = env.drawings
+                .filter((d) => d && (d.type === "zone" || d.type === "line"))
+                .map((d) => ({
+                  type: d.type,
+                  tone: ["support", "resistance", "trend"].includes(d.tone) ? d.tone : "trend",
+                  x1: coord(d.x1), y1: coord(d.y1), x2: coord(d.x2), y2: coord(d.y2),
+                  label: typeof d.label === "string" ? d.label.slice(0, 48) : "",
+                }))
+                .slice(0, 6);
+              if (drawings.length) plot = { drawings };
+            }
+            if (Array.isArray(env.actions)) {
+              const actions = env.actions
+                .filter((a) => a && ["watch", "remind", "watchlist", "teach"].includes(a.kind) && typeof a.label === "string")
+                .map((a) => ({
+                  kind: a.kind,
+                  label: a.label.slice(0, 64),
+                  symbol: typeof a.symbol === "string" ? a.symbol.slice(0, 12) : null,
+                  level: typeof a.level === "number" && isFinite(a.level) ? a.level : null,
+                  when: ["open", "4h", "tomorrow"].includes(a.when) ? a.when : null,
+                  topic: typeof a.topic === "string" ? a.topic.slice(0, 64) : null,
+                }))
+                .slice(0, 4);
+              if (actions.length) plotActions = actions;
+            }
+            console.log(`Plot envelope parsed: ${plot ? plot.drawings.length : 0} drawings, ${plotActions ? plotActions.length : 0} actions`);
+          }
+        } catch (e) {
+          console.error("Plot envelope parse failed, returning raw text:", e.message);
+          // Salvage the read field if the JSON is merely malformed
+          const m = /"read"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(textResponse);
+          if (m) {
+            try { textResponse = JSON.parse(`"${m[1]}"`); } catch { /* keep raw text */ }
+          }
+        }
+      }
+
       logApiUsage(data.usage);
 
-      return { response: textResponse || "I'm not sure how to respond to that. Could you try rephrasing?" };
+      const out = { response: textResponse || "I'm not sure how to respond to that. Could you try rephrasing?" };
+      if (plot) out.plot = plot;
+      if (plotActions) out.actions = plotActions;
+      return out;
     } catch (error) {
       console.error("Chat error:", error);
       throw new HttpsError("internal", "Failed to process your message. Please try again.");
