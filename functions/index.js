@@ -818,11 +818,12 @@ async function callTogetherAI(messages, apiKey, { model, maxTokens = 8192, tempe
 // with callGeminiVision; v1 relies on the prompt-level JSON instruction plus
 // the handler's existing parsing instead of a response_format constraint.
 async function callSparkVision(messages, apiKey, { temperature = 0.7, jsonMode = false } = {}) {
+  const startedAt = Date.now();
   const body = {
     model: SPARK_VISION_MODEL,
     messages,
     temperature,
-    max_tokens: 8192,
+    max_tokens: 1200,
   };
   const res = await fetch(META_API_URL, {
     method: "POST",
@@ -840,7 +841,7 @@ async function callSparkVision(messages, apiKey, { temperature = 0.7, jsonMode =
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content || "";
   if (!text) throw new Error("Meta Model API returned an empty response");
-  console.log(`Spark vision answered with ${SPARK_VISION_MODEL}`);
+  console.log(`Spark vision answered with ${SPARK_VISION_MODEL} in ${Date.now() - startedAt}ms (in ${data.usage?.prompt_tokens ?? "?"} / out ${data.usage?.completion_tokens ?? "?"} tokens)`);
   return {
     choices: [{ message: { content: text } }],
     usage: data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
@@ -963,6 +964,7 @@ exports.chat = onCall(
       }
 
       const hasImage = validImage;
+      const visionT0 = Date.now();
       const model = hasImage ? VISION_MODEL : TEXT_MODEL;
       const lowerPrompt = prompt.toLowerCase();
 
@@ -1079,6 +1081,7 @@ exports.chat = onCall(
       if (hasImage) {
         // Images go to Muse Spark (Meta Model API) first, with Gemini as
         // the fallback. Text-only requests stay on Together.
+        const visionT1 = Date.now();
         try {
           data = await callSparkVision(messages, metaKey.value().trim(), {
             temperature: signalMode ? 0.2 : 0.7,
@@ -1091,6 +1094,7 @@ exports.chat = onCall(
             jsonMode: !!signalMode,
           });
         }
+        console.log(`Vision timing: pre-model ${visionT1 - visionT0}ms, total ${Date.now() - visionT0}ms`);
       } else {
         data = await callTogetherAI(messages, apiKey, {
           model,
