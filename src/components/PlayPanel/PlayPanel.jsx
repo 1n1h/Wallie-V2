@@ -82,7 +82,39 @@ const TILES = [
 ];
 
 const PlayPanel = ({ onCollapse, mobileSection }) => {
-  const { onSent } = useContext(Context);
+  const { onSent, loading, isStreaming, recentPrompt, chatHistory } = useContext(Context);
+
+  // Live presence: while Wallie is generating, the status under his name
+  // narrates the work — picked from the prompt that triggered it — and
+  // the dot pulses. Idle, he's "Watching the markets".
+  const working = !!(loading || isStreaming);
+  const [statusTick, setStatusTick] = useState(0);
+  useEffect(() => {
+    if (!working) return;
+    const id = setInterval(() => setStatusTick((t) => t + 1), 2200);
+    return () => clearInterval(id);
+  }, [working]);
+  const activityFor = (p) => {
+    const s = (p || "").toLowerCase();
+    if (!s) return null;
+    if (s === "analyze" || s.includes("analyze my chart") || s.includes("screenshot")) return "Marking up your chart…";
+    if (s.includes("signal")) return "Hunting for a trade signal…";
+    if (s.includes("sentiment")) return "Reading market sentiment…";
+    if (/\b(teach|learn|explain|what is|how does|lesson)\b/.test(s)) return "Preparing your lesson…";
+    if (/\b(chart|graph|pull up|show me|display)\b/.test(s)) return "Pulling up the chart…";
+    if (/\b(levels|support|resistance)\b/.test(s)) return "Drawing the levels…";
+    if (/\b(buy|sell|close|open|position|desk)\b/.test(s)) return "Working your desk…";
+    return null;
+  };
+  const lastUserText =
+    recentPrompt ||
+    [...(chatHistory || [])].reverse().find((m) => m.type === "user")?.message ||
+    "";
+  const specificActivity = activityFor(lastUserText);
+  const statusSequence = specificActivity
+    ? [specificActivity, "Analyzing the markets…", "Scanning for setups…"]
+    : ["Analyzing the markets…", "Scanning for setups…", "Checking the levels…", "Watching price action…"];
+  const statusText = working ? statusSequence[statusTick % statusSequence.length] : "Watching the markets";
   const [done, setDone] = useState(() => ROUTINE.map(() => false));
   const [tab, setTab] = useState("activity");
 
@@ -249,8 +281,8 @@ const PlayPanel = ({ onCollapse, mobileSection }) => {
             />
           </div>
           <span className="pp-name">Wallie</span>
-          <span className="pp-status">
-            <span className="pp-dot" /> Watching the markets
+          <span className={`pp-status ${working ? "working" : ""}`}>
+            <span className={`pp-dot ${working ? "working" : ""}`} /> {statusText}
           </span>
         </div>
 
