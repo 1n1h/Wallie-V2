@@ -200,6 +200,14 @@ const ContextProvider = (props) => {
     if (!clean) return;
     setIsSpeaking(true);
     setSpeechLoading(true);
+    // iOS unlock: play a silent clip NOW, inside the tap gesture, so the
+    // real audio — ready seconds later, after the model generates — is
+    // allowed to play instead of being rejected as unrequested.
+    try {
+      audioRef.current.src =
+        "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=";
+      audioRef.current.play().catch(() => {});
+    } catch { /* noop */ }
     try {
       // Studio voice (Kokoro). A hung or failed model load must not spin
       // forever — 45s cap, then the device voice takes over.
@@ -240,6 +248,7 @@ const ContextProvider = (props) => {
 
   const stopSpeaking = () => {
     if (audioRef.current) {
+      audioRef.current.onended = null;
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }

@@ -59,9 +59,19 @@ export async function initTTS() {
   }
 }
 
+// Kokoro only knows its own voice ids (am_adam, af_heart, …). A saved
+// setting can hold anything else — e.g. an Apple device-voice URI written
+// by the iOS app into the shared settings doc ("com.apple.voice.…") —
+// and Kokoro throws `Voice "…" not found` on every generate. Defend here:
+// anything that isn't Kokoro-shaped falls back to Adam (male default).
+export function resolveKokoroVoice(voiceId) {
+  if (typeof voiceId === "string" && /^[a-z]{2}_[a-z0-9]+$/i.test(voiceId)) return voiceId;
+  return "am_adam";
+}
+
 export async function textToSpeech(text, voiceId = "am_adam") {
   const tts = await initTTS();
-  const audio = await tts.generate(text, { voice: voiceId });
+  const audio = await tts.generate(text, { voice: resolveKokoroVoice(voiceId) });
   return audio.toBlob();
 }
 
@@ -122,7 +132,13 @@ export function speakWithDeviceVoice(text, { onEnd, onError } = {}) {
 
   const start = () => {
     if (session !== deviceSession) return;
-    try { window.speechSynthesis.cancel(); } catch { /* noop */ }
+    // iOS: cancelling an idle synth can swallow the next utterance, and
+    // the synth can sit paused — only cancel when busy, then resume.
+    const synth = window.speechSynthesis;
+    if (synth.speaking || synth.pending) {
+      try { synth.cancel(); } catch { /* noop */ }
+    }
+    try { synth.resume(); } catch { /* noop */ }
     let idx = 0;
     const speakNext = () => {
       if (session !== deviceSession) return;
