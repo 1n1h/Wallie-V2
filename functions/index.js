@@ -1488,3 +1488,101 @@ exports.searchWeb = onCall(
     }
   }
 );
+
+// ─── Demo desk: live quotes + drawn levels ───
+// Batch quotes for the paper-trading desk. Symbols are desk display
+// symbols (US30, GOLD, BTC, AAPL…) resolved to data sources the same way
+// chart cards resolve them (chartDataSource).
+async function fetchYahooQuotePrice(yahooSymbol) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1d`;
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const meta = data.chart?.result?.[0]?.meta;
+  if (!meta || meta.regularMarketPrice == null) return null;
+  const prev = meta.chartPreviousClose || meta.previousClose || null;
+  return {
+    price: meta.regularMarketPrice,
+    changePct: prev ? +(((meta.regularMarketPrice - prev) / prev) * 100).toFixed(2) : null,
+  };
+}
+
+exports.prices = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "You must be signed in.");
+  }
+  const raw = Array.isArray(request.data?.symbols) ? request.data.symbols : [];
+  const symbols = [...new Set(raw.map((s) => String(s).toUpperCase().trim()).filter(Boolean))].slice(0, 12);
+  const quotes = {};
+  const cryptoJobs = {};
+  const stockJobs = [];
+  for (const sym of symbols) {
+    const src = chartDataSource({ symbol: sym });
+    if (src.type === "crypto") {
+      (cryptoJobs[src.coinId] = cryptoJobs[src.coinId] || []).push(sym);
+    } else {
+      stockJobs.push([sym, src.symbol]);
+    }
+  }
+  const tasks = [];
+  const coinIds = Object.keys(cryptoJobs);
+  if (coinIds.length) {
+    tasks.push((async () => {
+      try {
+        const res = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${coinIds.join(",")}&vs_currencies=usd&include_24hr_change=true`,
+          { headers: { accept: "application/json" } }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const id of coinIds) {
+          const d = data[id];
+          if (!d || d.usd == null) continue;
+          for (const sym of cryptoJobs[id]) {
+            quotes[sym] = { price: d.usd, changePct: d.usd_24h_change != null ? +d.usd_24h_change.toFixed(2) : null };
+          }
+        }
+      } catch (err) {
+        console.error("prices crypto error:", err.message);
+      }
+    })());
+  }
+  for (const [sym, yahoo] of stockJobs) {
+    tasks.push((async () => {
+      try {
+        const q = await Promise.race([
+          fetchYahooQuotePrice(yahoo),
+          new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+        ]);
+        if (q) quotes[sym] = q;
+      } catch (err) {
+        console.error("prices stock error:", err.message);
+      }
+    })());
+  }
+  await Promise.all(tasks);
+  return { quotes, asOf: Date.now() };
+});
+
+// Drawn levels for one symbol — same computation as chat chart cards.
+exports.levels = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "You must be signed in.");
+  }
+  const symbol = String(request.data?.symbol || "").toUpperCase().trim();
+  const interval = String(request.data?.interval || "D");
+  if (!symbol) {
+    throw new HttpsError("invalid-argument", "A symbol is required.");
+  }
+  const chartReq = { symbol, tvSymbol: CHART_TV_MAP[symbol] || `NASDAQ:${symbol}`, interval };
+  try {
+    const levels = await Promise.race([
+      computeChartLevels(chartReq),
+      new Promise((resolve) => setTimeout(() => resolve(null), 9000)),
+    ]);
+    return { levels };
+  } catch (err) {
+    console.error("levels error:", err.message);
+    return { levels: null };
+  }
+});

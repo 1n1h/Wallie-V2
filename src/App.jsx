@@ -21,6 +21,7 @@ const MOBILE_SECTIONS = {
   watchlist: "upcoming",
   identity: "identity",
 };
+import DemoDesk from "./components/Demo/DemoDesk";
 import LandingPage from './components/LandingPage/LandingPage';
 import Signup from "./components/Signup";
 import Pricing from "./components/Pricing";
@@ -96,6 +97,18 @@ function ChatPage() {
   );
 }
 
+function DemoPage() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  return (
+    <div className="chat-container">
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+      <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <DemoDesk />
+      <SettingsModal />
+    </div>
+  );
+}
+
 function App() {
   const [bypassed, setBypassed] = useState(
     () => sessionStorage.getItem("wallie_bypass") === "true"
@@ -123,6 +136,7 @@ function App() {
               <Route path="/support" element={<Support />} />
               <Route path="/community" element={<ProtectedRoute><Community /></ProtectedRoute>} />
               <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+              <Route path="/demo" element={<ProtectedRoute><DemoPage /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             </>
           )}

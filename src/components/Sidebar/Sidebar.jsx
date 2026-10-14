@@ -8,6 +8,7 @@ import {
   Menu,
   SquarePen,
   X,
+  TrendingUp,
   Users,
   AtSign,
   HandCoins,
@@ -170,6 +171,11 @@ const Sidebar = ({ mobileOpen, onClose }) => {
 
       {/* Bottom Navigation */}
       <div className="sb-bottom">
+        <div className="sb-icon-btn" onClick={() => { hideTip(); navigate("/demo"); }} onMouseEnter={(e) => showTip(e, "Practice trading on live markets")} onMouseLeave={hideTip}>
+          <TrendingUp size={20} strokeWidth={1.8} />
+          {!collapsed && <span className="sb-label">Demo Desk</span>}
+        </div>
+
         <div className="sb-icon-btn" onClick={() => { hideTip(); navigate("/community"); }} onMouseEnter={(e) => showTip(e, "Join the conversation")} onMouseLeave={hideTip}>
           <Users size={20} strokeWidth={1.8} />
           {!collapsed && <span className="sb-label">Community</span>}
