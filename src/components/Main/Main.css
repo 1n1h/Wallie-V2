@@ -2019,3 +2019,16 @@ img.listening {
 @media (min-width: 769px) {
   .action-chips { margin-bottom: 48px; }
 }
+
+/* Inline live chart card (TradingView embed inside a chat reply) */
+.chart-card { margin: 12px 0 6px; }
+.chart-card-tv {
+  height: 380px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(140, 130, 115, 0.35);
+  background: rgba(140, 130, 115, 0.08);
+}
+@media (max-width: 768px) {
+  .chart-card-tv { height: 300px; }
+}

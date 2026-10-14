@@ -319,6 +319,7 @@ const ContextProvider = (props) => {
       const response = res.text;
       const aiPlot = res.plot ? { image: newUserMsg.image, drawings: res.plot.drawings || [] } : null;
       const aiActions = res.actions || null;
+      const aiChart = res.chart || null;
       setLoading(false);
 
       // Increment message count for free users after successful response
@@ -330,6 +331,7 @@ const ContextProvider = (props) => {
         message: "",
         plot: aiPlot,
         actions: aiActions,
+        chart: aiChart,
         chatId: currentChatId
       };
       const historyWithAi = [...updatedHistory, newAiMsg];
@@ -362,7 +364,7 @@ const ContextProvider = (props) => {
           setStreamingText("");
 
           // Final update with complete message
-          const finalHistory = [...updatedHistory, { type: 'ai', message: response, plot: aiPlot, actions: aiActions, chatId: currentChatId }];
+          const finalHistory = [...updatedHistory, { type: 'ai', message: response, plot: aiPlot, actions: aiActions, chart: aiChart, chatId: currentChatId }];
           setChatHistory(finalHistory);
           saveCurrentChat(finalHistory);
           setResultData(response);

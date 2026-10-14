@@ -84,6 +84,50 @@ const PlotFigure = ({ plot }) => {
   );
 };
 
+// Inline live chart: rendered when the user asks Wallie for a chart of a
+// symbol ("show me a chart of US30") — no upload needed. Uses TradingView's
+// official advanced-chart embed, the same pattern as the panel heat map.
+const ChartCard = ({ chart }) => {
+  const hostRef = useRef(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || host.dataset.loaded) return;
+    host.dataset.loaded = "true";
+
+    const widget = document.createElement("div");
+    widget.className = "tradingview-widget-container__widget";
+    widget.style.height = "100%";
+    widget.style.width = "100%";
+    host.appendChild(widget);
+
+    const script = document.createElement("script");
+    script.type = "text/javascript";
+    script.async = true;
+    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    script.innerHTML = JSON.stringify({
+      symbol: chart.tvSymbol,
+      interval: chart.interval || "D",
+      theme: document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark",
+      style: "1",
+      locale: "en",
+      autosize: true,
+      allow_symbol_change: true,
+      save_image: false,
+      calendar: false,
+      support_host: "https://www.tradingview.com",
+    });
+    host.appendChild(script);
+  }, [chart]);
+
+  return (
+    <figure className="chart-card">
+      <div className="tradingview-widget-container chart-card-tv" ref={hostRef} />
+      <figcaption className="plot-caption">{chart.symbol} · live chart by TradingView — switch timeframes right here</figcaption>
+    </figure>
+  );
+};
+
 const Main = ({ onMenuClick }) => {
   const [imageQuestion, setImageQuestion] = useState("");
   const [isListening, setIsListening] = useState(false);
@@ -668,6 +712,7 @@ const Main = ({ onMenuClick }) => {
                           );
                         })()}
                         {message.plot && <PlotFigure plot={message.plot} />}
+                        {message.chart && <ChartCard chart={message.chart} />}
                         <div className={`markdown-content ${showCursor ? "streaming-cursor" : ""}`}>
                           <ReactMarkdown>{message.message.replace(/^\s*VERDICT:\s*(BULLISH|BEARISH|NEUTRAL)\s+\d{1,3}\s*%.*$/im, "").trim()}</ReactMarkdown>
                         </div>

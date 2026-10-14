@@ -292,6 +292,7 @@ const STOCK_ALIASES = {
   nasdaq: "^IXIC", qqq: "QQQ", dow: "^DJI", dia: "DIA",
   gold: "GC=F", silver: "SI=F", oil: "CL=F", "crude oil": "CL=F",
   "natural gas": "NG=F",
+  us30: "^DJI", nas100: "^IXIC", spx500: "^GSPC", xauusd: "GC=F",
 };
 
 // Extract tickers/coins from user prompt
@@ -335,6 +336,61 @@ function detectAssets(prompt) {
   }
 
   return { cryptos, stocks };
+}
+
+// ─── Inline chart cards ───
+// "Show me a chart of US30" → the reply carries a live TradingView chart
+// card, no upload needed. Detection is deterministic (no model cost): the
+// prompt needs chart intent AND a symbol we can map to a TradingView feed.
+const CHART_TV_MAP = {
+  US30: "OANDA:US30USD", USA30: "OANDA:US30USD", DJI: "OANDA:US30USD", DOW: "OANDA:US30USD", DIA: "OANDA:US30USD",
+  NAS100: "OANDA:NAS100USD", US100: "OANDA:NAS100USD", NDX: "OANDA:NAS100USD", NASDAQ: "OANDA:NAS100USD", QQQ: "NASDAQ:QQQ",
+  SPX500: "TVC:SPX", SP500: "TVC:SPX", SPX: "TVC:SPX",
+  GOLD: "TVC:GOLD", XAUUSD: "TVC:GOLD", XAU: "TVC:GOLD",
+  SILVER: "TVC:SILVER", XAGUSD: "TVC:SILVER",
+  BTC: "BITSTAMP:BTCUSD", BTCUSD: "BITSTAMP:BTCUSD", BITCOIN: "BITSTAMP:BTCUSD",
+  ETH: "BITSTAMP:ETHUSD", ETHUSD: "BITSTAMP:ETHUSD", ETHEREUM: "BITSTAMP:ETHUSD",
+  SOL: "COINBASE:SOLUSD", SOLANA: "COINBASE:SOLUSD",
+  XRP: "BITSTAMP:XRPUSD", DOGE: "COINBASE:DOGEUSD", DOGECOIN: "COINBASE:DOGEUSD",
+  EURUSD: "FX:EURUSD", GBPUSD: "FX:GBPUSD", USDJPY: "FX:USDJPY", AUDUSD: "FX:AUDUSD", USDCAD: "FX:USDCAD", USDCHF: "FX:USDCHF",
+  OIL: "TVC:USOIL", WTI: "TVC:USOIL", USOIL: "TVC:USOIL",
+  SPY: "AMEX:SPY",
+};
+const CHART_INTERVALS = [
+  [/\bmonthly\b|\b1\s?mo\b/i, "M"],
+  [/\bweekly\b|\b1\s?w\b/i, "W"],
+  [/\b15\s?m\b|\bfifteen minute\b/i, "15"],
+  [/\b5\s?m\b|\bfive minute\b/i, "5"],
+  [/\b30\s?m\b|\bthirty minute\b/i, "30"],
+  [/\b1\s?m\b|\bone minute\b/i, "1"],
+  [/\b4\s?h\b|\bfour hour\b/i, "240"],
+  [/\b1\s?h\b|\bhourly\b|\bone hour\b/i, "60"],
+  [/\bdaily\b|\b1\s?d\b|\bday chart\b/i, "D"],
+];
+function detectChartRequest(prompt) {
+  if (typeof prompt !== "string" || !prompt.trim()) return null;
+  const intent =
+    /\b(chart|graph|mock[-\s]?up|show me|pull up|display|bring up|draw)\b/i.test(prompt) ||
+    /^\s*(us30|nas100|spx500|gold|xauusd|btc|eth|eurusd|gbpusd|sol)\s*(chart)?\s*(please)?\s*$/i.test(prompt);
+  if (!intent) return null;
+  const upper = prompt.toUpperCase();
+  let tvSymbol = null;
+  let display = null;
+  if (upper.includes("S&P")) { tvSymbol = "TVC:SPX"; display = "SPX500"; }
+  if (!tvSymbol) {
+    const tokens = upper.split(/[^A-Z0-9]+/).filter(Boolean);
+    for (const tok of tokens) {
+      if (CHART_TV_MAP[tok]) { tvSymbol = CHART_TV_MAP[tok]; display = tok; break; }
+    }
+  }
+  if (!tvSymbol) {
+    const dollar = /\$([A-Za-z]{1,5})\b/.exec(prompt);
+    if (dollar) { tvSymbol = `NASDAQ:${dollar[1].toUpperCase()}`; display = dollar[1].toUpperCase(); }
+  }
+  if (!tvSymbol) return null;
+  let interval = "D";
+  for (const [re, code] of CHART_INTERVALS) { if (re.test(prompt)) { interval = code; break; } }
+  return { symbol: display, tvSymbol, interval };
 }
 
 // Detect the primary ticker from prompt + pageContext (for TA enrichment)
@@ -1088,6 +1144,13 @@ exports.chat = onCall(
         finalSystemPrompt += PLOT_FORMAT_INSTRUCTION;
       }
 
+      // Inline chart card: "show me a chart of US30" (text only — image
+      // requests already carry the user's own chart).
+      const chartReq = !hasImage && !signalMode ? detectChartRequest(prompt) : null;
+      if (chartReq) {
+        finalSystemPrompt += `\n\nCHART DISPLAY: A live interactive ${chartReq.symbol} chart is being displayed to the user inside this reply, below your text. Refer to it naturally in one or two short sentences (e.g. "here's ${chartReq.symbol} live") and point out what to look at — trend direction, structure, the nearest level from the market data above if any was provided. Do NOT invent exact live prices that were not provided to you. Keep it brief: the chart is the point.`;
+      }
+
       const messages = [{ role: "system", content: finalSystemPrompt }];
 
       // Conversation history with image context notes
@@ -1210,6 +1273,10 @@ exports.chat = onCall(
       const out = { response: textResponse || "I'm not sure how to respond to that. Could you try rephrasing?" };
       if (plot) out.plot = plot;
       if (plotActions) out.actions = plotActions;
+      if (chartReq) {
+        out.chart = chartReq;
+        console.log(`Chart card attached: ${chartReq.tvSymbol} (${chartReq.interval})`);
+      }
       return out;
     } catch (error) {
       console.error("Chat error:", error);
