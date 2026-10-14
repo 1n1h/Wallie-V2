@@ -441,19 +441,6 @@
   to { opacity: 1; transform: translateY(-50%) translateX(0); }
 }
 
-/* ===== SOCIALS: real platform buttons ===== */
-.sb-socials { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
-.sb-socials.collapsed { flex-direction: column; padding: 6px 0; gap: 6px; }
-.sb-social-btn {
-  width: 34px; height: 34px; border-radius: 11px; border: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(101, 84, 50, 0.10); color: inherit; flex-shrink: 0;
-}
-.sb-social-btn:hover { background: #006ced; color: #fff; }
-[data-theme="dark"] .sb-social-btn { background: rgba(245, 242, 234, 0.09); }
-[data-theme="dark"] .sb-social-btn:hover { background: #006ced; color: #fff; }
-.sb-socials .sb-label { margin-left: 2px; }
-
 /* Current-page state for sidebar nav (e.g. Demo Desk becomes Back to Chat) */
 .sb-icon-btn.active { background: rgba(0, 108, 237, 0.16); color: #4b90ff; }
 .sb-icon-btn.active:hover { background: rgba(0, 108, 237, 0.24); }

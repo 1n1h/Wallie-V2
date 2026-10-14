@@ -311,6 +311,19 @@ const SettingsModal = () => {
               </div>
             )}
           </section>
+
+          {/* Follow Wallie (moved from the sidebar) */}
+          <section className="sm-section">
+            <h3 className="sm-section-title">Follow Wallie</h3>
+            <button className="sm-row-btn" onClick={() => window.open("https://www.tiktok.com/@t.thetiktoktrader", "_blank")}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M16.6 3c.4 2.2 1.8 3.6 4 3.9v3c-1.6 0-3-.5-4-1.3v6.1c0 3.4-2.4 5.8-5.7 5.8a5.5 5.5 0 0 1-5.6-5.5c0-3.2 2.6-5.6 6-5.4v3.1c-1.6-.3-3 .7-3 2.2 0 1.4 1.1 2.4 2.5 2.4 1.6 0 2.7-1.1 2.7-2.9V3h3z" /></svg>
+              TikTok — @t.thetiktoktrader
+            </button>
+            <button className="sm-row-btn" onClick={() => window.open("https://www.instagram.com/wallie_ai", "_blank")}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5.2" /><circle cx="12" cy="12" r="4" /><circle cx="17.3" cy="6.7" r="0.7" fill="currentColor" stroke="none" /></svg>
+              Instagram — @wallie_ai
+            </button>
+          </section>
         </div>
       </aside>
     </div>,
