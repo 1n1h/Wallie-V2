@@ -149,7 +149,7 @@ export default function DemoDesk() {
 
   useEffect(() => {
     if (!uid) return;
-    const q = query(collection(db, "users", uid, "demoTrades"), orderBy("closedAt", "desc"), limit(8));
+    const q = query(collection(db, "users", uid, "demoTrades"), orderBy("closedAt", "desc"), limit(300));
     const unsub = onSnapshot(q, (snap) => {
       setTrades(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
@@ -691,6 +691,13 @@ export default function DemoDesk() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quotes, orders]);
 
+  // Account-run stats for the top strip: win rate over this epoch's
+  // closed trades, and straight realized P&L (balance vs starting).
+  const epochTrades = account ? trades.filter((t) => (t.epoch || 0) === (account.epoch || 0)) : [];
+  const wins = epochTrades.filter((t) => (t.pnl || 0) > 0).length;
+  const winRate = epochTrades.length ? Math.round((wins / epochTrades.length) * 100) : null;
+  const totalPL = account ? account.balance - account.startingBalance : 0;
+
   // ── Chart ──
   const theme = typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
   const tvSrc =
@@ -777,6 +784,14 @@ export default function DemoDesk() {
         <div className="demo-stat">
           <span className="demo-stat-label">Margin level</span>
           <strong>{marginLevel == null ? "—" : `${Math.round(marginLevel)}%`}</strong>
+        </div>
+        <div className="demo-stat">
+          <span className="demo-stat-label">Win rate</span>
+          <strong>{winRate == null ? "—" : `${winRate}%`}</strong>
+        </div>
+        <div className="demo-stat">
+          <span className="demo-stat-label">P&amp;L</span>
+          <strong className={totalPL > 0 ? "pos" : totalPL < 0 ? "neg" : ""}>{totalPL > 0 ? "+" : totalPL < 0 ? "−" : ""}{fmtUSD(totalPL)}</strong>
         </div>
         <div className="demo-strip-actions">
           <span className="demo-lev-pill">1:{account.leverage}</span>
@@ -982,7 +997,7 @@ export default function DemoDesk() {
         </div>
         {trades.length === 0 && <p className="demo-empty">Closed trades land here automatically, with their R multiple and how they ended.</p>}
         <div className="demo-trades">
-          {trades.map((t) => (
+          {trades.slice(0, 8).map((t) => (
             <div key={t.id} className="demo-trade">
               <span className={`demo-trade-bar ${t.pnl >= 0 ? "win" : "loss"}`} />
               <strong>{t.symbol}</strong>
