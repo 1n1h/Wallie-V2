@@ -7,7 +7,7 @@
   background: #201c18;
   color: #f1ede4;
 }
-.demo-wrap .card {
+.demo-wrap .demo-card {
   background: #2a2724;
   border: 1px solid rgba(233, 225, 207, 0.09);
   border-radius: 18px;
@@ -248,7 +248,7 @@
 
 /* Light theme */
 [data-theme="light"] .demo-wrap { background: #f4f0e7; color: #26221c; }
-[data-theme="light"] .demo-wrap .card {
+[data-theme="light"] .demo-wrap .demo-card {
   background: #fcfaf4; border-color: rgba(90, 78, 60, 0.14);
   box-shadow: 0 6px 24px rgba(90, 78, 60, 0.08);
 }

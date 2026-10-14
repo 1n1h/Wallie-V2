@@ -352,7 +352,7 @@ export default function DemoDesk() {
   if (!account) {
     return (
       <div className="demo-wrap">
-        <div className="demo-setup card">
+        <div className="demo-setup demo-card">
           <h2>Open your demo account</h2>
           <p className="demo-sub">
             Practice trading on live markets with demo funds — FTMO-style. Nothing here touches a real
@@ -396,7 +396,7 @@ export default function DemoDesk() {
   return (
     <div className="demo-wrap">
       {/* Account strip */}
-      <div className="demo-strip card">
+      <div className="demo-strip demo-card">
         <div className="demo-stat">
           <span className="demo-stat-label"><span className="desk-live-dot" /> Demo account</span>
           <span className="demo-stat-sub">Started {fmtUSD(account.startingBalance)} · resets {account.resets || 0}</span>
@@ -421,7 +421,7 @@ export default function DemoDesk() {
 
       <div className="demo-grid">
         {/* Chart card */}
-        <div className="demo-chart card">
+        <div className="demo-chart demo-card">
           <div className="demo-chart-head">
             <div className="demo-chart-title">
               <strong>{symbol}</strong>
@@ -469,7 +469,7 @@ export default function DemoDesk() {
 
         {/* Right rail: ticket + positions */}
         <div className="demo-rail">
-          <div className="demo-ticket card">
+          <div className="demo-ticket demo-card">
             <h3>New position</h3>
             <select className="demo-input" value={symbol} onChange={(e) => { setSymbol(e.target.value); autoFillRef.current = true; }} aria-label="Symbol">
               {ROSTER.map((r) => (
@@ -514,7 +514,7 @@ export default function DemoDesk() {
             <p className="demo-fine">Demo funds only — this never touches a real broker.</p>
           </div>
 
-          <div className="demo-positions card">
+          <div className="demo-positions demo-card">
             <h3>Open positions {positions.length > 0 && <span className="demo-count">{positions.length}</span>}</h3>
             {rows.length === 0 && <p className="demo-empty">No open positions. Your first trade is a click away.</p>}
             {rows.map((r) => (
@@ -545,7 +545,7 @@ export default function DemoDesk() {
       </div>
 
       {/* Journal strip */}
-      <div className="demo-journal card">
+      <div className="demo-journal demo-card">
         <div className="demo-journal-head">
           <h3>Journal — auto-logged from your demo trades</h3>
           <button className="demo-linkbtn" onClick={() => navigate("/chat")}>Review my journal →</button>
