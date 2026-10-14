@@ -1173,7 +1173,7 @@ const DESK_ACTIONS_INSTRUCTION =
   "Action types:\n" +
   "- open_position {symbol, direction: \"buy\"|\"sell\", leverage?: 1-100, rr?: target distance as a multiple of the stop distance (\"1 to 4 risk reward\" means rr 4), notional?: dollar size}. The desk fills at the live price, takes the stop from the drawn levels, and sets the target from rr. Include leverage, rr, or notional ONLY when the user states them.\n" +
   "- close_position {symbol} closes that symbol's open position; {\"type\":\"close_position\",\"all\":true} closes everything.\n" +
-  "- show_symbol {symbol, interval?: \"60\"|\"240\"|\"D\"|\"W\"} puts that market on their chart with your levels drawn.\n" +
+  "- show_symbol {symbol, interval?: \"1\"|\"5\"|\"15\"|\"60\"|\"240\"|\"D\"|\"W\"} puts that market on their chart with your levels drawn.\n" +
   "Symbols must be desk symbols: " + DESK_SYMBOLS.join(", ") + ". Common names: dollar yen = USDJPY, gold = GOLD, nas = NAS100, dow = US30, euro dollar = EURUSD.\n" +
   "In your visible text, briefly confirm what you are doing (e.g. \"Opening a USDJPY buy on your desk at 1:50 with a 4R target\"). The app executes it and shows them the fill — never say you cannot place demo trades; on this desk you can. If they did not ask you to do anything, answer normally with NO desk block.";
 
@@ -1495,7 +1495,7 @@ exports.chat = onCall(
                   else if (sym && DESK_SYMBOLS.includes(sym)) clean.push({ type: "close_position", symbol: sym });
                 } else if (a.type === "show_symbol" && sym && DESK_SYMBOLS.includes(sym)) {
                   const act = { type: "show_symbol", symbol: sym };
-                  if (["60", "240", "D", "W"].includes(String(a.interval))) act.interval = String(a.interval);
+                  if (["1", "5", "15", "60", "240", "D", "W"].includes(String(a.interval))) act.interval = String(a.interval);
                   clean.push(act);
                 }
               }

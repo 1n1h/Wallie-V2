@@ -99,6 +99,9 @@ export const SPREAD = {
 };
 
 export const INTERVALS = [
+  { code: "1", label: "1m" },
+  { code: "5", label: "5m" },
+  { code: "15", label: "15m" },
   { code: "60", label: "1H" },
   { code: "240", label: "4H" },
   { code: "D", label: "1D" },
