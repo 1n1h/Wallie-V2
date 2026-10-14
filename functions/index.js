@@ -436,6 +436,7 @@ async function fetchRawSeries(source, intervalCode) {
       if (!Array.isArray(data) || data.length < 30) return null;
       return {
         ts: data.map((d) => d[0]),
+        opens: data.map((d) => d[1]),
         highs: data.map((d) => d[2]),
         lows: data.map((d) => d[3]),
         closes: data.map((d) => d[4]),
@@ -450,19 +451,19 @@ async function fetchRawSeries(source, intervalCode) {
     const q = result?.indicators?.quote?.[0];
     if (!result || !q || !Array.isArray(result.timestamp)) return null;
     let rows = result.timestamp
-      .map((t, i) => ({ t: t * 1000, h: q.high?.[i], l: q.low?.[i], c: q.close?.[i] }))
-      .filter((r) => r.h != null && r.l != null && r.c != null);
+      .map((t, i) => ({ t: t * 1000, o: q.open?.[i], h: q.high?.[i], l: q.low?.[i], c: q.close?.[i] }))
+      .filter((r) => r.o != null && r.h != null && r.l != null && r.c != null);
     if (intervalCode === "240") {
       const agg = [];
       for (let i = 0; i < rows.length; i += 4) {
         const g = rows.slice(i, i + 4);
         if (g.length === 0) continue;
-        agg.push({ t: g[0].t, h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)), c: g[g.length - 1].c });
+        agg.push({ t: g[0].t, o: g[0].o, h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)), c: g[g.length - 1].c });
       }
       rows = agg;
     }
     if (rows.length < 30) return null;
-    return { ts: rows.map((r) => r.t), highs: rows.map((r) => r.h), lows: rows.map((r) => r.l), closes: rows.map((r) => r.c) };
+    return { ts: rows.map((r) => r.t), opens: rows.map((r) => r.o), highs: rows.map((r) => r.h), lows: rows.map((r) => r.l), closes: rows.map((r) => r.c) };
   } catch (err) {
     console.error("fetchRawSeries error:", err.message);
     return null;
@@ -484,8 +485,15 @@ function levelsFromSeries(series) {
   const highs = series.highs.slice(start);
   const lows = series.lows.slice(start);
   const closes = series.closes.slice(start);
+  const opens = (series.opens || series.closes).slice(start);
   const count = closes.length;
   if (count < 30) return null;
+  // Candles for the desk's own chart — same visible window as the levels,
+  // so drawn lines always sit exactly on the candles they came from.
+  const candles = closes.map((c, i) => ({
+    time: Math.floor(series.ts[start + i] / 1000),
+    open: opens[i], high: highs[i], low: lows[i], close: c,
+  }));
   const price = closes[count - 1];
   const drawings = [];
   const sr = findSupportResistance(highs, lows, closes);
@@ -517,13 +525,12 @@ function levelsFromSeries(series) {
   if (ll && ll[1].price > ll[0].price && ll[1].i - ll[0].i >= 5) {
     drawings.push({ type: "trend", tone: "trend", i1: ll[0].i, p1: ll[0].price, i2: ll[1].i, p2: ll[1].price, label: "Trendline" });
   }
-  if (drawings.length === 0) return null;
   let pMin = Math.min(...lows);
   let pMax = Math.max(...highs);
   const pad = (pMax - pMin) * 0.05;
   pMin -= pad;
   pMax += pad;
-  return { drawings, pMin, pMax, count, startTs: series.ts[start], endTs: series.ts[n - 1], currentPrice: price };
+  return { drawings, pMin, pMax, count, startTs: series.ts[start], endTs: series.ts[n - 1], currentPrice: price, candles };
 }
 
 async function computeChartLevels(chartReq) {
@@ -1158,6 +1165,18 @@ async function callGeminiVision(messages, apiKey, { temperature = 0.7, jsonMode 
   throw lastError || new Error("Gemini vision unavailable");
 }
 
+const DESK_SYMBOLS = ["US30", "NAS100", "SPX500", "GOLD", "SILVER", "OIL", "BTC", "ETH", "SOL", "XRP", "DOGE", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "SPY", "QQQ", "AAPL", "TSLA", "NVDA"];
+
+const DESK_ACTIONS_INSTRUCTION =
+  "\n\nDESK ACTIONS: The user is chatting from their Demo Desk inside this app — paper trading with demo funds. It is NOT real money and there is NO broker. You can operate the desk for them. When (and only when) they ask you to do one of these things, end your reply with a fenced block in exactly this shape:\n" +
+  "```desk\n{\"actions\":[{\"type\":\"open_position\",\"symbol\":\"USDJPY\",\"direction\":\"buy\",\"leverage\":50,\"rr\":4}]}\n```\n" +
+  "Action types:\n" +
+  "- open_position {symbol, direction: \"buy\"|\"sell\", leverage?: 1-100, rr?: target distance as a multiple of the stop distance (\"1 to 4 risk reward\" means rr 4), notional?: dollar size}. The desk fills at the live price, takes the stop from the drawn levels, and sets the target from rr. Include leverage, rr, or notional ONLY when the user states them.\n" +
+  "- close_position {symbol} closes that symbol's open position; {\"type\":\"close_position\",\"all\":true} closes everything.\n" +
+  "- show_symbol {symbol, interval?: \"60\"|\"240\"|\"D\"|\"W\"} puts that market on their chart with your levels drawn.\n" +
+  "Symbols must be desk symbols: " + DESK_SYMBOLS.join(", ") + ". Common names: dollar yen = USDJPY, gold = GOLD, nas = NAS100, dow = US30, euro dollar = EURUSD.\n" +
+  "In your visible text, briefly confirm what you are doing (e.g. \"Opening a USDJPY buy on your desk at 1:50 with a 4R target\"). The app executes it and shows them the fill — never say you cannot place demo trades; on this desk you can. If they did not ask you to do anything, answer normally with NO desk block.";
+
 exports.chat = onCall(
   { secrets: [togetherKey, geminiKey, metaKey], timeoutSeconds: 120, cors: true },
   async (request) => {
@@ -1297,6 +1316,14 @@ exports.chat = onCall(
         finalSystemPrompt += PLOT_FORMAT_INSTRUCTION;
       }
 
+      // Demo Desk mode: the desk chat can ask Wallie to operate the desk
+      // (open/close demo positions, switch the chart) via a fenced action
+      // block the handler parses into structured deskActions.
+      const deskMode = !signalMode && typeof userPersona === "string" && userPersona.includes("[[DESK_MODE]]");
+      if (deskMode) {
+        finalSystemPrompt += DESK_ACTIONS_INSTRUCTION;
+      }
+
       // Inline chart card: "show me a chart of US30" (text only — image
       // requests already carry the user's own chart).
       const chartReq = !hasImage && !signalMode ? detectChartRequest(prompt) : null;
@@ -1314,7 +1341,7 @@ exports.chat = onCall(
             computeChartLevels(chartReq),
             new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
           ]);
-          if (levels) {
+          if (levels && levels.drawings.length) {
             chartReq.levels = levels;
             console.log(`Chart levels computed: ${levels.drawings.length} drawings for ${chartReq.tvSymbol}`);
             const lvText = levels.drawings.filter((d) => d.type === "hline").map((d) => d.label).join(" · ");
@@ -1444,6 +1471,46 @@ exports.chat = onCall(
         }
       }
 
+      // Desk actions: extract + sanitize the fenced block, strip it from
+      // the visible reply, and ship structured actions for the desk to run.
+      let deskActions = null;
+      if (deskMode && textResponse) {
+        const m = /```(?:desk|json)?\s*(\{[\s\S]*?\})\s*```/.exec(textResponse);
+        if (m) {
+          try {
+            const parsed = JSON.parse(m[1]);
+            if (parsed && Array.isArray(parsed.actions)) {
+              const clean = [];
+              for (const a of parsed.actions.slice(0, 3)) {
+                if (!a || typeof a !== "object") continue;
+                const sym = typeof a.symbol === "string" ? a.symbol.toUpperCase().trim() : null;
+                if (a.type === "open_position" && sym && DESK_SYMBOLS.includes(sym) && ["buy", "sell"].includes(a.direction)) {
+                  const act = { type: "open_position", symbol: sym, direction: a.direction };
+                  if (Number.isFinite(a.leverage)) act.leverage = Math.max(1, Math.min(100, Math.round(a.leverage)));
+                  if (Number.isFinite(a.rr)) act.rr = Math.max(0.5, Math.min(10, a.rr));
+                  if (Number.isFinite(a.notional)) act.notional = Math.max(100, Math.min(10000000, a.notional));
+                  clean.push(act);
+                } else if (a.type === "close_position") {
+                  if (a.all === true) clean.push({ type: "close_position", all: true });
+                  else if (sym && DESK_SYMBOLS.includes(sym)) clean.push({ type: "close_position", symbol: sym });
+                } else if (a.type === "show_symbol" && sym && DESK_SYMBOLS.includes(sym)) {
+                  const act = { type: "show_symbol", symbol: sym };
+                  if (["60", "240", "D", "W"].includes(String(a.interval))) act.interval = String(a.interval);
+                  clean.push(act);
+                }
+              }
+              if (clean.length) {
+                deskActions = clean;
+                textResponse = textResponse.replace(m[0], "").trim();
+                console.log(`Desk actions parsed: ${clean.length} (${clean.map((c) => c.type).join(",")})`);
+              }
+            }
+          } catch (e) {
+            console.error("Desk actions parse failed:", e.message);
+          }
+        }
+      }
+
       logApiUsage(data.usage);
 
       const out = { response: textResponse || "I'm not sure how to respond to that. Could you try rephrasing?" };
@@ -1453,6 +1520,7 @@ exports.chat = onCall(
         out.chart = chartReq;
         console.log(`Chart card attached: ${chartReq.tvSymbol} (${chartReq.interval})`);
       }
+      if (deskActions) out.deskActions = deskActions;
       return out;
     } catch (error) {
       console.error("Chat error:", error);

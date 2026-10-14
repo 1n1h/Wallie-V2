@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Context } from "../../context/Context";
 import {
   collection, doc, onSnapshot, addDoc, deleteDoc, setDoc, updateDoc,
   increment, query, orderBy, limit,
@@ -11,7 +12,12 @@ import {
   fetchQuotes, fetchLevels,
 } from "../../config/demo";
 import DeskChat from "./DeskChat";
+import DeskChart from "./DeskChart";
 import { MessageCircle } from "lucide-react";
+
+// Desk actions from chat are executed exactly once per message, even if
+// the desk unmounts and remounts within the session.
+const executedDeskActions = new Set();
 import "./DemoDesk.css";
 
 // ─── Demo Desk ───
@@ -48,6 +54,7 @@ const fmtDur = (ms) => {
 export default function DemoDesk() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { chatHistory } = useContext(Context);
   const uid = user?.uid;
 
   const [account, setAccount] = useState(undefined); // undefined = loading, null = none
@@ -67,6 +74,8 @@ export default function DemoDesk() {
   const autoFillRef = useRef(true);
   const [ticketError, setTicketError] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
+  const [chartEngine, setChartEngine] = useState(() => localStorage.getItem("wallie_desk_chart") || "wallie");
+  const [actionLog, setActionLog] = useState([]);
   const [resetArmed, setResetArmed] = useState(false);
   const closingRef = useRef(new Set());
 
@@ -124,12 +133,14 @@ export default function DemoDesk() {
     return () => { alive = false; clearInterval(id); };
   }, [pollSymbols.join(",")]);
 
-  // ── Drawn levels for the chart ──
+  // ── Drawn levels + candles for the chart (refreshed on a slow poll) ──
   useEffect(() => {
     let alive = true;
     setLevels(null);
-    fetchLevels(symbol, interval).then((lv) => { if (alive) setLevels(lv); });
-    return () => { alive = false; };
+    const load = () => fetchLevels(symbol, interval).then((lv) => { if (alive && lv) setLevels(lv); });
+    load();
+    const id = setInterval(load, 20000);
+    return () => { alive = false; clearInterval(id); };
   }, [symbol, interval]);
 
   // ── Price helpers ──
@@ -309,6 +320,7 @@ export default function DemoDesk() {
 
   const deskContext = () => {
     const lines = [
+      "[[DESK_MODE]]",
       "THE USER IS ON THEIR DEMO DESK (paper trading with demo funds — NOT real money, no broker involved).",
       `Demo account: balance ${fmtUSD(balance)}, equity ${fmtUSD(equity)}, free margin ${fmtUSD(freeMargin)}, leverage 1:${account?.leverage || lev}.`,
     ];
@@ -323,6 +335,95 @@ export default function DemoDesk() {
     lines.push(`They are looking at ${symbol} on the ${interval} timeframe${pxSel ? ` (live price ${fmtPx(pxSel.mid)})` : ""}. Answer with their desk in mind. This is education about their practice trading — never place trades for them; they press the buttons.`);
     return lines.join("\n");
   };
+
+  // ── Agentic desk actions: Wallie (via chat) operates the desk ──
+  const logAct = (text, ok = true) =>
+    setActionLog((prev) => [...prev.slice(-3), { id: `${Date.now()}-${Math.random()}`, text, ok }]);
+
+  const executeDeskActions = async (actions) => {
+    for (const a of actions) {
+      try {
+        if (a.type === "show_symbol") {
+          if (!ROSTER_MAP[a.symbol]) { logAct(`I don't trade ${a.symbol} on this desk yet`, false); continue; }
+          setSymbol(a.symbol);
+          if (a.interval) setIntervalCode(a.interval);
+          logAct(`Showing ${a.symbol} on your chart — levels drawn`);
+        } else if (a.type === "open_position") {
+          const meta = ROSTER_MAP[a.symbol];
+          if (!meta) { logAct(`I don't trade ${a.symbol} on this desk yet`, false); continue; }
+          const q = await fetchQuotes([a.symbol]);
+          const mid = q[a.symbol]?.price;
+          if (!mid) { logAct(`Couldn't get a live price for ${a.symbol} — position not opened`, false); continue; }
+          const half = (SPREAD[meta.cls] ?? 0.0003) / 2;
+          const entry = a.direction === "buy" ? mid * (1 + half) : mid * (1 - half);
+          const lv = await fetchLevels(a.symbol, interval);
+          let stop = null;
+          if (lv) {
+            const sups = lv.drawings.filter((d) => d.type === "hline" && d.tone === "support" && d.price < entry).map((d) => d.price);
+            const ress = lv.drawings.filter((d) => d.type === "hline" && d.tone === "resistance" && d.price > entry).map((d) => d.price);
+            stop = a.direction === "buy" ? (sups.length ? Math.max(...sups) : null) : (ress.length ? Math.min(...ress) : null);
+          }
+          let stopNote = "";
+          if (!stop) {
+            stop = entry * (a.direction === "buy" ? 0.9965 : 1.0035);
+            stopNote = " (no clean level nearby — 0.35% stop)";
+          }
+          const target = a.rr ? entry + (a.direction === "buy" ? 1 : -1) * a.rr * Math.abs(entry - stop) : null;
+          const notional = a.notional || parseFloat(notionalStr) || 5000;
+          const useLev = a.leverage || lev;
+          if (notional / useLev > freeMargin) {
+            logAct(`Not enough free margin for a ${fmtUSD(notional)} ${a.symbol} position — not opened`, false);
+            continue;
+          }
+          await addDoc(collection(db, "users", uid, "demoPositions"), {
+            symbol: a.symbol,
+            tvSymbol: meta.tv,
+            direction: a.direction,
+            notional,
+            leverage: useLev,
+            entryPrice: entry,
+            stop,
+            target,
+            openedAt: Date.now(),
+            epoch: account?.epoch || 0,
+            source: "wallie",
+          });
+          logAct(`Opened ${a.direction === "buy" ? "BUY" : "SELL"} ${a.symbol} ${fmtUSD(notional)} @ ${fmtPx(entry)} · 1:${useLev} · stop ${fmtPx(stop)}${target ? ` · target ${fmtPx(target)} (${a.rr}R)` : ""}${stopNote}`);
+        } else if (a.type === "close_position") {
+          const targets = a.all ? positions : positions.filter((p) => p.symbol === a.symbol);
+          if (!targets.length) { logAct(a.all ? "No open positions to close" : `No open ${a.symbol} position to close`, false); continue; }
+          for (const pos of targets) {
+            const q = await fetchQuotes([pos.symbol]);
+            const mid = q[pos.symbol]?.price;
+            if (!mid) { logAct(`Couldn't price ${pos.symbol} to close it`, false); continue; }
+            const half = (SPREAD[ROSTER_MAP[pos.symbol]?.cls] ?? 0.0003) / 2;
+            const exit = pos.direction === "buy" ? mid * (1 - half) : mid * (1 + half);
+            await closePosition(pos, exit, "manual");
+            logAct(`Closed ${pos.symbol} ${pos.direction === "buy" ? "LONG" : "SHORT"} @ ${fmtPx(exit)}`);
+          }
+        }
+      } catch (err) {
+        console.error("desk action error:", err);
+        logAct("That action didn't go through — try again", false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!account || !chatHistory?.length) return;
+    for (let i = chatHistory.length - 1; i >= 0; i--) {
+      const msg = chatHistory[i];
+      if (msg.type === "ai" && Array.isArray(msg.desk) && msg.desk.length) {
+        const key = `${msg.chatId || ""}:${i}:${JSON.stringify(msg.desk)}`;
+        if (!executedDeskActions.has(key)) {
+          executedDeskActions.add(key);
+          executeDeskActions(msg.desk);
+        }
+        break; // only the latest action-bearing message
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatHistory]);
 
   // ── Chart ──
   const theme = typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
@@ -432,33 +533,56 @@ export default function DemoDesk() {
                 </span>
               )}
             </div>
-            <div className="demo-ivpills">
-              {INTERVALS.map((iv) => (
-                <button key={iv.code} className={interval === iv.code ? "active" : ""} onClick={() => setIntervalCode(iv.code)}>
-                  {iv.label}
-                </button>
-              ))}
+            <div className="demo-chart-switches">
+              <div className="demo-ivpills">
+                <button className={chartEngine === "wallie" ? "active" : ""} onClick={() => { setChartEngine("wallie"); localStorage.setItem("wallie_desk_chart", "wallie"); }}>Wallie chart</button>
+                <button className={chartEngine === "tv" ? "active" : ""} onClick={() => { setChartEngine("tv"); localStorage.setItem("wallie_desk_chart", "tv"); }}>TradingView</button>
+              </div>
+              <div className="demo-ivpills">
+                {INTERVALS.map((iv) => (
+                  <button key={iv.code} className={interval === iv.code ? "active" : ""} onClick={() => setIntervalCode(iv.code)}>
+                    {iv.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           <div className="demo-chart-tv">
-            <iframe title={`${symbol} live chart`} src={tvSrc} style={{ width: "100%", height: "100%", border: 0, display: "block" }} allowFullScreen />
-            {showLevels && levels && (
+            {chartEngine === "tv" ? (
               <>
-                <svg className="chart-levels-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                  {drawn.map(({ d, y1, y2 }, i) => (
-                    <line key={i} x1="0" y1={y1} x2="100" y2={y2} stroke={TONES[d.tone].stroke} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
-                  ))}
-                </svg>
-                {drawn.map(({ d, labelY }, i) => (
-                  <span key={i} className="chart-lvl-label" style={{ top: `${labelY}%`, color: TONES[d.tone].label, borderColor: TONES[d.tone].stroke }}>
-                    {d.label}
-                  </span>
-                ))}
+                <iframe title={`${symbol} live chart`} src={tvSrc} style={{ width: "100%", height: "100%", border: 0, display: "block" }} allowFullScreen />
+                {showLevels && levels && (
+                  <>
+                    <svg className="chart-levels-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                      {drawn.map(({ d, y1, y2 }, i) => (
+                        <line key={i} x1="0" y1={y1} x2="100" y2={y2} stroke={TONES[d.tone].stroke} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+                      ))}
+                    </svg>
+                    {drawn.map(({ d, labelY }, i) => (
+                      <span key={i} className="chart-lvl-label" style={{ top: `${labelY}%`, color: TONES[d.tone].label, borderColor: TONES[d.tone].stroke }}>
+                        {d.label}
+                      </span>
+                    ))}
+                  </>
+                )}
               </>
+            ) : levels?.candles?.length ? (
+              <DeskChart
+                candles={levels.candles}
+                drawings={showLevels ? levels.drawings : []}
+                theme={theme}
+                chartKey={`${symbol}-${interval}`}
+              />
+            ) : (
+              <div className="demo-chart-loading">Loading chart data…</div>
             )}
           </div>
           <div className="demo-chart-cap">
-            <span>{symbol} · live chart by TradingView{levels ? " · Wallie's levels, drawn from real market data" : ""}</span>
+            <span>
+              {chartEngine === "tv"
+                ? `${symbol} · live chart by TradingView${levels ? " · Wallie's levels, drawn from real market data" : ""}`
+                : `${symbol} · Wallie chart — candles & levels from the same real market data, so the lines move with the chart`}
+            </span>
             {levels && (
               <button className="demo-linkbtn" onClick={() => setShowLevels(!showLevels)}>
                 {showLevels ? "Hide levels" : "Show levels"}
@@ -568,7 +692,7 @@ export default function DemoDesk() {
       <button className="demo-ask" onClick={() => setChatOpen(true)}>
         <MessageCircle size={18} /> Ask Wallie
       </button>
-      <DeskChat open={chatOpen} onClose={() => setChatOpen(false)} deskContext={deskContext} />
+      <DeskChat open={chatOpen} onClose={() => setChatOpen(false)} deskContext={deskContext} actionLog={actionLog} />
     </div>
   );
 }

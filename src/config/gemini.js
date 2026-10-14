@@ -76,6 +76,7 @@ export default async function runChat(prompt, imageFile = null, chatHistory = []
       plot: result.plot || null,
       actions: result.actions || null,
       chart: result.chart || null,
+      desk: result.deskActions || null,
     };
   } catch (error) {
     console.error("Error in runChat:", error);
@@ -84,6 +85,7 @@ export default async function runChat(prompt, imageFile = null, chatHistory = []
       plot: null,
       actions: null,
       chart: null,
+      desk: null,
     };
   }
 }

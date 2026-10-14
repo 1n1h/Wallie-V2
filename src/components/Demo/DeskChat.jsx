@@ -7,7 +7,7 @@ import wallieMark from "../../assets/wallie-mark.png";
 // "Ask Wallie" slide-over on the demo desk. Uses the SAME chat context as
 // the main chat page — same conversation, same brain — with a snapshot of
 // the desk (account + open positions) attached as hidden context per send.
-export default function DeskChat({ open, onClose, deskContext }) {
+export default function DeskChat({ open, onClose, deskContext, actionLog }) {
   const { chatHistory, onSent, loading, isStreaming, setSelectedImage } = useContext(Context);
   const [text, setText] = useState("");
   const scrollRef = useRef(null);
@@ -59,6 +59,15 @@ export default function DeskChat({ open, onClose, deskContext }) {
           )
         )}
         {loading && <div className="desk-msg ai desk-typing">Wallie is thinking…</div>}
+        {actionLog?.length > 0 && (
+          <div className="desk-actlog">
+            {actionLog.map((e) => (
+              <div key={e.id} className={`desk-act ${e.ok ? "ok" : "fail"}`}>
+                {e.ok ? "✓" : "✗"} {e.text}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="desk-chat-composer">
