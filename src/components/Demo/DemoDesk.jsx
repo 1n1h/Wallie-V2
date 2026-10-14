@@ -76,6 +76,9 @@ export default function DemoDesk() {
   const [chatOpen, setChatOpen] = useState(false);
   const [chartEngine, setChartEngine] = useState(() => localStorage.getItem("wallie_desk_chart") || "wallie");
   const [actionLog, setActionLog] = useState([]);
+  const [toolMode, setToolMode] = useState("off");
+  const [toolPlan, setToolPlan] = useState(null);
+  const [toolNotice, setToolNotice] = useState(null);
   const [resetArmed, setResetArmed] = useState(false);
   const closingRef = useRef(new Set());
 
@@ -425,6 +428,61 @@ export default function DemoDesk() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatHistory]);
 
+  // ── Position tool: the drawing drives the ticket; Trade fills at market ──
+  useEffect(() => {
+    if (chartEngine === "tv" && toolMode !== "off") setToolMode("off");
+  }, [chartEngine, toolMode]);
+
+  const handlePlanChange = (plan) => {
+    setToolPlan(plan);
+    if (plan) {
+      autoFillRef.current = false;
+      setSide(plan.direction);
+      setStopStr(String(+plan.stop.toFixed(6)));
+      setTargetStr(String(+plan.target.toFixed(6)));
+    }
+  };
+
+  const openFromTool = async (plan) => {
+    if (!plan) return;
+    const meta = ROSTER_MAP[symbol];
+    const q = await fetchQuotes([symbol]);
+    const mid = q[symbol]?.price;
+    if (!mid) { setToolNotice("Couldn't get a live price — position not opened"); return; }
+    const half = (SPREAD[meta?.cls] ?? 0.0003) / 2;
+    const liveEntry = plan.direction === "buy" ? mid * (1 + half) : mid * (1 - half);
+    const delta = liveEntry - plan.entry;
+    const stop = plan.stop + delta;
+    const target = plan.target + delta;
+    const notional = parseFloat(notionalStr) || 5000;
+    if (notional / lev > freeMargin) {
+      setToolNotice(`Not enough free margin — this needs ${fmtUSD(notional / lev)}, you have ${fmtUSD(freeMargin)} free`);
+      return;
+    }
+    try {
+      await addDoc(collection(db, "users", uid, "demoPositions"), {
+        symbol,
+        tvSymbol: meta?.tv || `NASDAQ:${symbol}`,
+        direction: plan.direction,
+        notional,
+        leverage: lev,
+        entryPrice: liveEntry,
+        stop,
+        target,
+        openedAt: Date.now(),
+        epoch: account?.epoch || 0,
+        source: "position-tool",
+      });
+      const msg = `Filled ${plan.direction === "buy" ? "BUY" : "SELL"} ${symbol} @ ${fmtPx(liveEntry)} · stop ${fmtPx(stop)} · target ${fmtPx(target)}`;
+      setToolNotice(msg);
+      logAct(msg);
+      setTimeout(() => setToolNotice(null), 7000);
+    } catch (err) {
+      console.error("openFromTool:", err);
+      setToolNotice("Couldn't open the position — please try again");
+    }
+  };
+
   // ── Chart ──
   const theme = typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
   const tvSrc =
@@ -534,6 +592,12 @@ export default function DemoDesk() {
               )}
             </div>
             <div className="demo-chart-switches">
+              {chartEngine === "wallie" && (
+                <div className="demo-ivpills">
+                  <button className={toolMode === "long" ? "active tool-long" : ""} onClick={() => setToolMode(toolMode === "long" ? "off" : "long")}>Long</button>
+                  <button className={toolMode === "short" ? "active tool-short" : ""} onClick={() => setToolMode(toolMode === "short" ? "off" : "short")}>Short</button>
+                </div>
+              )}
               <div className="demo-ivpills">
                 <button className={chartEngine === "wallie" ? "active" : ""} onClick={() => { setChartEngine("wallie"); localStorage.setItem("wallie_desk_chart", "wallie"); }}>Wallie chart</button>
                 <button className={chartEngine === "tv" ? "active" : ""} onClick={() => { setChartEngine("tv"); localStorage.setItem("wallie_desk_chart", "tv"); }}>TradingView</button>
@@ -572,6 +636,11 @@ export default function DemoDesk() {
                 drawings={showLevels ? levels.drawings : []}
                 theme={theme}
                 chartKey={`${symbol}-${interval}`}
+                toolMode={toolMode}
+                sizeNotional={parseFloat(notionalStr) || 0}
+                onPlanChange={handlePlanChange}
+                onTrade={openFromTool}
+                notice={toolNotice}
               />
             ) : (
               <div className="demo-chart-loading">Loading chart data…</div>

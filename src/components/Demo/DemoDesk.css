@@ -80,7 +80,71 @@
   border-radius: 14px; overflow: hidden; background: #1d1a16;
 }
 .demo-chart-switches { display: flex; gap: 8px; flex-wrap: wrap; }
+.desk-lw-wrap { position: relative; width: 100%; height: 100%; }
 .desk-lw-chart { width: 100%; height: 100%; }
+
+/* Position tool */
+.demo-ivpills button.tool-long.active { background: #2e9e66; }
+.demo-ivpills button.tool-short.active { background: #c94f4f; }
+.desk-tool-hint {
+  position: absolute; top: 10px; left: 10px; z-index: 6; max-width: 430px;
+  font-size: 12px; line-height: 1.45; padding: 8px 12px; border-radius: 10px;
+  background: rgba(0, 108, 237, 0.92); color: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); pointer-events: none;
+}
+.desk-zone { position: absolute; left: 0; z-index: 2; pointer-events: none; }
+.desk-zone.risk { background: rgba(224, 93, 93, 0.16); }
+.desk-zone.reward { background: rgba(63, 178, 127, 0.16); }
+.desk-strip {
+  position: absolute; left: 0; height: 14px; z-index: 4;
+  cursor: ns-resize; touch-action: none;
+  display: flex; align-items: center;
+}
+.desk-strip::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 6px; height: 2px;
+}
+.desk-strip.entry::before { background: #f1ede4; }
+.desk-strip.stop::before { background: #e05d5d; }
+.desk-strip.target::before { background: #3fb27f; }
+.desk-strip-tag {
+  position: relative; margin-left: 8px; font-size: 10.5px; font-weight: 700;
+  padding: 1px 7px; border-radius: 5px; white-space: nowrap;
+  background: rgba(20, 18, 15, 0.85); color: #f1ede4;
+}
+.desk-strip.stop .desk-strip-tag { background: rgba(120, 30, 30, 0.9); }
+.desk-strip.target .desk-strip-tag { background: rgba(20, 90, 55, 0.9); }
+.desk-tool-panel {
+  position: absolute; top: 10px; left: 10px; z-index: 6; width: 252px;
+  padding: 11px 13px; border-radius: 13px;
+  background: rgba(29, 26, 22, 0.94); color: #f1ede4;
+  border: 1px solid rgba(233, 225, 207, 0.16);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+.desk-tool-title { display: flex; align-items: center; gap: 8px; }
+.desk-tool-title strong { font-size: 14px; }
+.desk-tool-x {
+  margin-left: auto; font: inherit; cursor: pointer; background: transparent;
+  border: 0; color: inherit; opacity: 0.65; font-size: 13px; padding: 2px 4px;
+}
+.desk-tool-x:hover { opacity: 1; }
+.desk-tool-rows { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 12px; }
+.desk-tool-note { opacity: 0.55; font-size: 11px; line-height: 1.4; }
+.desk-tool-notice {
+  margin-top: 8px; font-size: 11.5px; line-height: 1.4; padding: 6px 8px;
+  border-radius: 8px; background: rgba(63, 178, 127, 0.16);
+  border: 1px solid rgba(63, 178, 127, 0.35);
+}
+.desk-tool-trade {
+  width: 100%; margin-top: 10px; font: inherit; font-weight: 800; font-size: 13px;
+  cursor: pointer; border: 0; border-radius: 999px; padding: 9px; color: #fff;
+  background: #006ced;
+}
+.desk-tool-trade:hover { background: #0a84ff; }
+[data-theme="light"] .desk-tool-panel {
+  background: rgba(252, 250, 244, 0.96); color: #26221c;
+  border-color: rgba(90, 78, 60, 0.2);
+}
+[data-theme="light"] .desk-strip.entry::before { background: #26221c; }
 .demo-chart-loading {
   height: 100%; display: grid; place-items: center;
   font-size: 13.5px; opacity: 0.6;
