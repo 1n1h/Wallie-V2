@@ -190,7 +190,11 @@ const ContextProvider = (props) => {
   };
 
   const handleTextToSpeech = async (text) => {
-    if (userSettings.ttsEnabled === false) return;
+    if (userSettings.ttsEnabled === false) {
+      // Never die silently — tell the user exactly why nothing played.
+      showTtsNotice("Voice replies are turned off — turn them on in Settings.");
+      return;
+    }
     stopSpeaking();
     const clean = cleanTextForSpeech(text);
     if (!clean) return;
