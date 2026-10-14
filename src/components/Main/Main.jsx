@@ -122,7 +122,7 @@ const ChartCard = ({ chart }) => {
 
   return (
     <figure className="chart-card">
-      <div className="tradingview-widget-container chart-card-tv" ref={hostRef} />
+      <div className="tradingview-widget-container chart-card-tv" ref={hostRef} style={{ height: "min(76vh, 720px)", minHeight: "460px" }} />
       <figcaption className="plot-caption">{chart.symbol} · live chart by TradingView — switch timeframes right here</figcaption>
     </figure>
   );

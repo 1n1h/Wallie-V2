@@ -2023,12 +2023,13 @@ img.listening {
 /* Inline live chart card (TradingView embed inside a chat reply) */
 .chart-card { margin: 12px 0 6px; }
 .chart-card-tv {
-  height: 560px;
+  height: min(76vh, 720px);
+  min-height: 460px;
   border-radius: 14px;
   overflow: hidden;
   border: 1px solid rgba(140, 130, 115, 0.35);
   background: rgba(140, 130, 115, 0.08);
 }
 @media (max-width: 768px) {
-  .chart-card-tv { height: 480px; }
+  .chart-card-tv { height: min(76vh, 720px); }
 }
