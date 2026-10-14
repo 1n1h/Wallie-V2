@@ -23,6 +23,7 @@ const ContextProvider = (props) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechLoading, setSpeechLoading] = useState(false);
   const [ttsNotice, setTtsNotice] = useState(null);
+  const [ttsError, setTtsError] = useState(null);
   const [selectedModel, setSelectedModel] = useState("wallie-1");
   const [chatHistory, setChatHistory] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(Date.now());
@@ -196,6 +197,7 @@ const ContextProvider = (props) => {
       return;
     }
     stopSpeaking();
+    setTtsError(null);
     const clean = cleanTextForSpeech(text);
     if (!clean) return;
     setIsSpeaking(true);
@@ -227,9 +229,10 @@ const ContextProvider = (props) => {
     } catch (error) {
       console.error("Error in speech (studio voice), falling back to device voice:", error);
       setSpeechLoading(false);
-      // Surface WHY the studio voice failed, right in the notice — turns
-      // every tap into a diagnosis instead of a silent console log.
-      const why = error?.message ? ` (${String(error.message).slice(0, 130)})` : "";
+      // Surface WHY the studio voice failed in a sticky, dismissible
+      // pill with the FULL error — turns every tap into a diagnosis
+      // instead of a silent console log.
+      setTtsError(`Studio voice couldn't load: ${String(error?.message || error || "unknown error")}`);
       const started = speakWithDeviceVoice(clean, {
         onEnd: () => setIsSpeaking(false),
         onError: () => {
@@ -238,7 +241,7 @@ const ContextProvider = (props) => {
         },
       });
       if (started) {
-        showTtsNotice(`Studio voice couldn't load${why} — using your device's voice.`);
+        showTtsNotice("Studio voice couldn't load — using your device's voice.");
       } else {
         setIsSpeaking(false);
         showTtsNotice("Voice isn't available on this device.");
@@ -468,6 +471,8 @@ const ContextProvider = (props) => {
     isSpeaking,
     speechLoading,
     ttsNotice,
+    ttsError,
+    clearTtsError: () => setTtsError(null),
     handleTextToSpeech,
     stopSpeaking,
     onSent,

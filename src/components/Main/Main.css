@@ -2073,6 +2073,19 @@ img.listening {
   animation: ttsToastIn 0.25s ease both;
 }
 [data-theme="light"] .tts-toast { background: #fcfaf4; color: #26221c; border-color: rgba(90, 78, 60, 0.2); }
+.tts-toast-error {
+  bottom: 164px; max-width: min(94vw, 620px);
+  background: #57281f; color: #ffe9e2; border-color: rgba(255, 180, 150, 0.25);
+  border-radius: 18px; text-align: left;
+  display: flex; gap: 12px; align-items: flex-start;
+  font-size: 12.5px; font-weight: 500; word-break: break-word;
+}
+[data-theme="light"] .tts-toast-error { background: #fdeee8; color: #6b2a1c; border-color: rgba(160, 70, 40, 0.3); }
+.tts-toast-x {
+  flex-shrink: 0; border: none; background: rgba(255, 255, 255, 0.14);
+  color: inherit; width: 22px; height: 22px; border-radius: 50%;
+  font-size: 14px; line-height: 1; cursor: pointer; margin-top: -1px;
+}
 @keyframes ttsToastIn {
   from { opacity: 0; transform: translate(-50%, 8px); }
   to { opacity: 1; transform: translate(-50%, 0); }

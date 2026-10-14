@@ -228,6 +228,8 @@ const Main = ({ onMenuClick }) => {
     isSpeaking: ctxIsSpeaking,
     speechLoading: ctxSpeechLoading,
     ttsNotice: ctxTtsNotice,
+    ttsError: ctxTtsError,
+    clearTtsError: ctxClearTtsError,
     handleTextToSpeech: ctxHandleTextToSpeech,
     stopSpeaking: ctxStopSpeaking,
     // Subscription & usage
@@ -378,6 +380,8 @@ const Main = ({ onMenuClick }) => {
   const isSpeaking = ctxIsSpeaking;
   const speechLoading = ctxSpeechLoading;
   const ttsNotice = ctxTtsNotice;
+  const ttsError = ctxTtsError;
+  const clearTtsError = ctxClearTtsError;
 
   const handleLogout = async () => {
     setIsProfileOpen(false);
@@ -677,6 +681,12 @@ const Main = ({ onMenuClick }) => {
   return (
     <div className="main">
       {ttsNotice && <div className="tts-toast" role="status">{ttsNotice}</div>}
+      {ttsError && (
+        <div className="tts-toast tts-toast-error" role="alert">
+          <span>{ttsError}</span>
+          <button className="tts-toast-x" onClick={clearTtsError} aria-label="Dismiss">×</button>
+        </div>
+      )}
       <div className="nav">
         {onMenuClick && (
           <button className="mobile-menu-btn" onClick={onMenuClick}>
