@@ -12,7 +12,7 @@ import {
   fetchQuotes, fetchLevels,
 } from "../../config/demo";
 import DeskChat from "./DeskChat";
-import DeskChart from "./DeskChart";
+import DeskChart, { orderKindFor, ORDER_LABEL } from "./DeskChart";
 import { MessageCircle } from "lucide-react";
 
 // Desk actions from chat are executed exactly once per message, even if
@@ -77,8 +77,15 @@ export default function DemoDesk() {
   const [chartEngine, setChartEngine] = useState(() => localStorage.getItem("wallie_desk_chart") || "wallie");
   const [actionLog, setActionLog] = useState([]);
   const [toolMode, setToolMode] = useState("off");
-  const [toolPlan, setToolPlan] = useState(null);
   const [toolNotice, setToolNotice] = useState(null);
+  // Position-tool plans live per symbol and persist (localStorage), so a
+  // mockup on GOLD is still there when you come back to GOLD.
+  const [plansBySymbol, setPlansBySymbol] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("wallie_desk_plans") || "{}"); } catch { return {}; }
+  });
+  const [activePlanMap, setActivePlanMap] = useState({});
+  const [orders, setOrders] = useState([]);
+  const fillingRef = useRef(new Set());
   const [resetArmed, setResetArmed] = useState(false);
   const closingRef = useRef(new Set());
 
@@ -107,6 +114,41 @@ export default function DemoDesk() {
 
   useEffect(() => {
     if (!uid) return;
+    const q = query(collection(db, "users", uid, "demoOrders"), orderBy("placedAt", "asc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, [uid]);
+
+  useEffect(() => {
+    try { localStorage.setItem("wallie_desk_plans", JSON.stringify(plansBySymbol)); } catch { /* storage full/blocked */ }
+  }, [plansBySymbol]);
+
+  // Self-heal: an armed order always has its plan box, even on a fresh
+  // device where localStorage has never seen it.
+  useEffect(() => {
+    if (!orders.length) return;
+    setPlansBySymbol((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const o of orders) {
+        const arr = next[o.symbol] || [];
+        if (!arr.some((p) => p.id === o.planId)) {
+          changed = true;
+          next[o.symbol] = [...arr, {
+            id: o.planId, direction: o.direction, entry: o.entryPrice,
+            stop: o.stop, target: o.target, t1: o.t1, t2: o.t2,
+            status: "armed", orderId: o.id, orderType: o.orderType,
+          }];
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [orders]);
+
+  useEffect(() => {
+    if (!uid) return;
     const q = query(collection(db, "users", uid, "demoTrades"), orderBy("closedAt", "desc"), limit(8));
     const unsub = onSnapshot(q, (snap) => {
       setTrades(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -120,8 +162,8 @@ export default function DemoDesk() {
 
   // ── Live quotes: selected symbol + every open position's symbol ──
   const pollSymbols = useMemo(
-    () => [...new Set([symbol, ...positions.map((p) => p.symbol)])],
-    [symbol, positions]
+    () => [...new Set([symbol, ...positions.map((p) => p.symbol), ...orders.map((o) => o.symbol)])],
+    [symbol, positions, orders]
   );
   useEffect(() => {
     let alive = true;
@@ -428,23 +470,64 @@ export default function DemoDesk() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatHistory]);
 
-  // ── Position tool: the drawing drives the ticket; Trade fills at market ──
+  // ── Position tool v2: per-symbol plan boxes, pending orders, live sync ──
   useEffect(() => {
     if (chartEngine === "tv" && toolMode !== "off") setToolMode("off");
   }, [chartEngine, toolMode]);
 
-  const handlePlanChange = (plan) => {
-    setToolPlan(plan);
-    if (plan) {
-      autoFillRef.current = false;
-      setSide(plan.direction);
-      setStopStr(String(+plan.stop.toFixed(6)));
-      setTargetStr(String(+plan.target.toFixed(6)));
-    }
+  const currentPlans = plansBySymbol[symbol] || [];
+  const activePlanId = activePlanMap[symbol] || currentPlans[currentPlans.length - 1]?.id || null;
+
+  const updatePlans = (sym, next) =>
+    setPlansBySymbol((prev) => ({ ...prev, [sym]: next }));
+
+  const syncTicketFromPlan = (plan) => {
+    if (!plan || plan.status !== "draft") return;
+    autoFillRef.current = false;
+    setSide(plan.direction);
+    setStopStr(String(+plan.stop.toFixed(6)));
+    setTargetStr(String(+plan.target.toFixed(6)));
   };
 
+  const handleSelectPlan = (id) => {
+    setActivePlanMap((prev) => ({ ...prev, [symbol]: id }));
+    const plan = (plansBySymbol[symbol] || []).find((p) => p.id === id);
+    if (plan) syncTicketFromPlan(plan);
+  };
+
+  // Plan geometry changed (drag end / create): persist, sync the ticket,
+  // and — the important part — adjust any live trade or armed order the
+  // plan is attached to.
+  const handlePlansChange = (next) => {
+    updatePlans(symbol, next);
+    for (const plan of next) {
+      if (plan.orderId) {
+        const px = pxFor(symbol);
+        const kind = px ? orderKindFor(plan, px.bid, px.ask) : plan.orderType;
+        updateDoc(doc(db, "users", uid, "demoOrders", plan.orderId), {
+          entryPrice: plan.entry, stop: plan.stop, target: plan.target, t2: plan.t2, orderType: kind,
+        }).catch((e) => console.error("order sync:", e));
+        if (kind !== plan.orderType) {
+          updatePlans(symbol, next.map((p) => (p.id === plan.id ? { ...p, orderType: kind } : p)));
+        }
+      }
+      if (plan.positionId) {
+        updateDoc(doc(db, "users", uid, "demoPositions", plan.positionId), {
+          stop: plan.stop, target: plan.target,
+        }).catch((e) => console.error("position sync:", e));
+      }
+    }
+    const active = next.find((p) => p.id === activePlanId);
+    if (active) syncTicketFromPlan(active);
+  };
+
+  const patchPlan = (sym, planId, patch) =>
+    setPlansBySymbol((prev) => ({
+      ...prev,
+      [sym]: (prev[sym] || []).map((p) => (p.id === planId ? { ...p, ...patch } : p)),
+    }));
+
   const openFromTool = async (plan) => {
-    if (!plan) return;
     const meta = ROSTER_MAP[symbol];
     const q = await fetchQuotes([symbol]);
     const mid = q[symbol]?.price;
@@ -460,7 +543,7 @@ export default function DemoDesk() {
       return;
     }
     try {
-      await addDoc(collection(db, "users", uid, "demoPositions"), {
+      const ref = await addDoc(collection(db, "users", uid, "demoPositions"), {
         symbol,
         tvSymbol: meta?.tv || `NASDAQ:${symbol}`,
         direction: plan.direction,
@@ -473,6 +556,7 @@ export default function DemoDesk() {
         epoch: account?.epoch || 0,
         source: "position-tool",
       });
+      patchPlan(symbol, plan.id, { status: "filled", positionId: ref.id });
       const msg = `Filled ${plan.direction === "buy" ? "BUY" : "SELL"} ${symbol} @ ${fmtPx(liveEntry)} · stop ${fmtPx(stop)} · target ${fmtPx(target)}`;
       setToolNotice(msg);
       logAct(msg);
@@ -482,6 +566,109 @@ export default function DemoDesk() {
       setToolNotice("Couldn't open the position — please try again");
     }
   };
+
+  const placePendingOrder = async (plan, kind) => {
+    const notional = parseFloat(notionalStr) || 5000;
+    if (notional / lev > freeMargin) {
+      setToolNotice(`Not enough free margin — this needs ${fmtUSD(notional / lev)}, you have ${fmtUSD(freeMargin)} free`);
+      return;
+    }
+    try {
+      const ref = await addDoc(collection(db, "users", uid, "demoOrders"), {
+        symbol,
+        direction: plan.direction,
+        orderType: kind,
+        entryPrice: plan.entry,
+        stop: plan.stop,
+        target: plan.target,
+        notional,
+        leverage: lev,
+        t1: plan.t1,
+        t2: plan.t2,
+        planId: plan.id,
+        placedAt: Date.now(),
+        epoch: account?.epoch || 0,
+      });
+      patchPlan(symbol, plan.id, { status: "armed", orderId: ref.id, orderType: kind });
+      const msg = `${ORDER_LABEL[kind]} armed on ${symbol} @ ${fmtPx(plan.entry)} · stop ${fmtPx(plan.stop)} · target ${fmtPx(plan.target)}`;
+      setToolNotice(msg);
+      logAct(msg);
+      setTimeout(() => setToolNotice(null), 7000);
+    } catch (err) {
+      console.error("placePendingOrder:", err);
+      setToolNotice("Couldn't place the order — please try again");
+    }
+  };
+
+  const handleTrade = (plan) => {
+    const px = pxFor(symbol);
+    if (!px) { setToolNotice("Waiting for a live price — try again in a second"); return; }
+    const kind = orderKindFor(plan, px.bid, px.ask);
+    if (kind === "market") openFromTool(plan);
+    else placePendingOrder(plan, kind);
+  };
+
+  const handleCancelOrder = async (plan, sym = symbol) => {
+    if (plan?.orderId) {
+      try { await deleteDoc(doc(db, "users", uid, "demoOrders", plan.orderId)); } catch { /* already gone */ }
+    }
+    if (plan) patchPlan(sym, plan.id, { status: "draft", orderId: null, orderType: null });
+    const msg = `Order cancelled on ${sym}`;
+    setToolNotice(msg);
+    logAct(msg);
+  };
+
+  const handleRemovePlan = (id) => {
+    const plan = currentPlans.find((p) => p.id === id);
+    if (plan?.orderId) handleCancelOrder(plan);
+    updatePlans(symbol, currentPlans.filter((p) => p.id !== id));
+  };
+
+  // Pending-order fills: watched on every quote tick.
+  const fillOrder = async (order, px) => {
+    if (fillingRef.current.has(order.id)) return;
+    fillingRef.current.add(order.id);
+    try {
+      const meta = ROSTER_MAP[order.symbol];
+      const half = (SPREAD[meta?.cls] ?? 0.0003) / 2;
+      const fill = order.direction === "buy" ? order.entryPrice * (1 + half) : order.entryPrice * (1 - half);
+      const ref = await addDoc(collection(db, "users", uid, "demoPositions"), {
+        symbol: order.symbol,
+        tvSymbol: meta?.tv || `NASDAQ:${order.symbol}`,
+        direction: order.direction,
+        notional: order.notional,
+        leverage: order.leverage,
+        entryPrice: fill,
+        stop: order.stop,
+        target: order.target,
+        openedAt: Date.now(),
+        epoch: order.epoch || 0,
+        source: "pending-order",
+      });
+      await deleteDoc(doc(db, "users", uid, "demoOrders", order.id));
+      patchPlan(order.symbol, order.planId, { status: "filled", positionId: ref.id, orderId: null, orderType: null });
+      const msg = `Your ${order.symbol} ${ORDER_LABEL[order.orderType] || "order"} filled @ ${fmtPx(fill)} · stop ${fmtPx(order.stop)} · target ${fmtPx(order.target)}`;
+      setToolNotice(msg);
+      logAct(msg);
+    } catch (err) {
+      console.error("fillOrder:", err);
+    } finally {
+      fillingRef.current.delete(order.id);
+    }
+  };
+
+  useEffect(() => {
+    if (!orders.length || !Object.keys(quotes).length) return;
+    for (const order of orders) {
+      const px = pxFor(order.symbol);
+      if (!px) continue;
+      const hit = order.direction === "buy"
+        ? (order.orderType === "buy-stop" ? px.ask >= order.entryPrice : px.ask <= order.entryPrice)
+        : (order.orderType === "sell-stop" ? px.bid <= order.entryPrice : px.bid >= order.entryPrice);
+      if (hit) fillOrder(order, px);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotes, orders]);
 
   // ── Chart ──
   const theme = typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
@@ -638,8 +825,14 @@ export default function DemoDesk() {
                 chartKey={`${symbol}-${interval}`}
                 toolMode={toolMode}
                 sizeNotional={parseFloat(notionalStr) || 0}
-                onPlanChange={handlePlanChange}
-                onTrade={openFromTool}
+                liveQuote={pxSel ? { bid: pxSel.bid, ask: pxSel.ask } : null}
+                plans={currentPlans}
+                activePlanId={activePlanId}
+                onSelectPlan={handleSelectPlan}
+                onPlansChange={handlePlansChange}
+                onTrade={handleTrade}
+                onCancelOrder={handleCancelOrder}
+                onRemovePlan={handleRemovePlan}
                 notice={toolNotice}
               />
             ) : (
@@ -706,6 +899,29 @@ export default function DemoDesk() {
             </button>
             <p className="demo-fine">Demo funds only — this never touches a real broker.</p>
           </div>
+
+          {orders.length > 0 && (
+            <div className="demo-positions demo-card">
+              <h3>Pending orders <span className="demo-count">{orders.length}</span></h3>
+              {orders.map((o) => (
+                <div key={o.id} className="demo-pos">
+                  <div className="demo-pos-main">
+                    <span className={`demo-dir ${o.direction}`}>{ORDER_LABEL[o.orderType] || "ORDER"}</span>
+                    <div>
+                      <strong>{o.symbol}</strong>
+                      <span className="demo-pos-sub">{fmtUSD(o.notional)} @ {fmtPx(o.entryPrice)} · 1:{o.leverage}</span>
+                      <span className="demo-pos-sub">SL {fmtPx(o.stop)} · TP {fmtPx(o.target)}</span>
+                    </div>
+                  </div>
+                  <div className="demo-pos-right">
+                    <button className="demo-close" onClick={() => handleCancelOrder({ id: o.planId, orderId: o.id }, o.symbol)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="demo-positions demo-card">
             <h3>Open positions {positions.length > 0 && <span className="demo-count">{positions.length}</span>}</h3>

@@ -140,6 +140,20 @@
   background: #006ced;
 }
 .desk-tool-trade:hover { background: #0a84ff; }
+.desk-tool-trade.cancel {
+  background: transparent; border: 1.5px solid #e05d5d; color: #ff9d9d;
+}
+.desk-tool-trade.cancel:hover { background: rgba(224, 93, 93, 0.14); }
+.desk-edge {
+  position: absolute; width: 10px; z-index: 5; cursor: ew-resize; touch-action: none;
+}
+.desk-edge::before {
+  content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 2px;
+  background: rgba(241, 237, 228, 0.55);
+}
+.desk-plan:not(.active) .desk-zone { opacity: 0.55; }
+.desk-plan.filled .desk-zone.risk { background: rgba(224, 93, 93, 0.10); }
+.desk-plan.filled .desk-zone.reward { background: rgba(63, 178, 127, 0.10); }
 [data-theme="light"] .desk-tool-panel {
   background: rgba(252, 250, 244, 0.96); color: #26221c;
   border-color: rgba(90, 78, 60, 0.2);

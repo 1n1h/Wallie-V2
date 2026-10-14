@@ -6,11 +6,12 @@ import { createChart, LineStyle } from "lightweight-charts";
 // and the levels are native price lines — pinned to their prices, moving
 // WITH the chart on zoom/pan.
 //
-// Position tool (TradingView-style long/short planner): arm Long or
-// Short, click the chart to place an entry, then drag the red zone to
-// set the stop and the green zone to set the target. The plan syncs to
-// the order ticket, and "Trade this position" opens it at market with
-// the drawn risk geometry preserved.
+// Position tool v2 (TradingView-style): plans are BOXES over a time
+// range (drag the right edge to resize), several can live on one chart,
+// and each is kept per symbol by the desk. A plan can be traded at
+// market, or armed as a pending order (buy/sell stop & limit) when its
+// entry sits away from the live price. Dragging an armed/filled plan's
+// stop or target adjusts the actual order/position.
 const TONE_COLOR = { support: "#3fb27f", resistance: "#e05d5d", trend: "#4B90FF" };
 
 const fmtPx = (p) => {
@@ -23,20 +24,52 @@ const fmtPx = (p) => {
 const fmtUSD = (n) =>
   n == null || Number.isNaN(n) ? "—" : Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
-export default function DeskChart({ candles, drawings, theme, chartKey, toolMode, sizeNotional, onPlanChange, onTrade, notice }) {
+// What kind of execution a plan's entry implies vs the live market.
+export function orderKindFor(plan, bid, ask) {
+  if (!plan || bid == null || ask == null) return "market";
+  if (plan.direction === "buy") {
+    if (plan.entry > ask) return "buy-stop";
+    if (plan.entry < bid) return "buy-limit";
+    return "market";
+  }
+  if (plan.entry < bid) return "sell-stop";
+  if (plan.entry > ask) return "sell-limit";
+  return "market";
+}
+export const ORDER_LABEL = {
+  "market": "Market",
+  "buy-stop": "Buy Stop",
+  "buy-limit": "Buy Limit",
+  "sell-stop": "Sell Stop",
+  "sell-limit": "Sell Limit",
+};
+
+export default function DeskChart({
+  candles, drawings, theme, chartKey, toolMode, sizeNotional, liveQuote,
+  plans, activePlanId, onSelectPlan, onPlansChange, onTrade, onCancelOrder, onRemovePlan, notice,
+}) {
   const hostRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const priceLinesRef = useRef([]);
   const trendSeriesRef = useRef([]);
   const fittedKeyRef = useRef(null);
-  const [plan, setPlan] = useState(null);
   const [, setLayoutTick] = useState(0);
-  const planRef = useRef(null);
-  const toolModeRef = useRef(toolMode);
+  const [localPlans, setLocalPlans] = useState(plans || []);
   const dragRef = useRef(null);
-  planRef.current = plan;
+  const toolModeRef = useRef(toolMode);
+  const plansRef = useRef(localPlans);
+  const candlesRef = useRef(candles);
+  const activeRef = useRef(activePlanId);
   toolModeRef.current = toolMode;
+  plansRef.current = localPlans;
+  candlesRef.current = candles;
+  activeRef.current = activePlanId;
+
+  // Sync the local mirror from the desk's canonical plans (not mid-drag).
+  useEffect(() => {
+    if (!dragRef.current) setLocalPlans(plans || []);
+  }, [plans, chartKey]);
 
   // ── Chart lifecycle ──
   useEffect(() => {
@@ -74,20 +107,52 @@ export default function DeskChart({ candles, drawings, theme, chartKey, toolMode
     const ro = new ResizeObserver(bump);
     ro.observe(hostRef.current);
 
-    // Position tool: first click on the chart places the entry.
+    // Clicks: select a plan whose box was clicked; otherwise, with the
+    // tool armed, drop a new plan at that price/time.
     chart.subscribeClick((param) => {
+      if (!param?.point || !seriesRef.current) return;
+      const s = seriesRef.current;
+      const x = param.point.x;
+      const y = param.point.y;
+      const ts = chart.timeScale();
+      for (const p of plansRef.current) {
+        const x1 = ts.timeToCoordinate(p.t1);
+        const x2 = ts.timeToCoordinate(p.t2);
+        const ys = [s.priceToCoordinate(p.entry), s.priceToCoordinate(p.stop), s.priceToCoordinate(p.target)];
+        if (x1 == null || x2 == null || ys.some((v) => v == null)) continue;
+        if (x >= Math.min(x1, x2) && x <= Math.max(x1, x2) && y >= Math.min(...ys) - 6 && y <= Math.max(...ys) + 6) {
+          onSelectPlan?.(p.id);
+          return;
+        }
+      }
       const mode = toolModeRef.current;
-      if (!mode || mode === "off" || planRef.current) return;
-      if (!param?.point) return;
-      const price = series.coordinateToPrice(param.point.y);
+      if (!mode || mode === "off") return;
+      const price = s.coordinateToPrice(y);
       if (price == null || price <= 0) return;
+      const cs = candlesRef.current || [];
+      if (cs.length < 2) return;
+      const barDur = cs[1].time - cs[0].time;
+      let t = param.time != null ? param.time : ts.coordinateToTime(x);
+      if (t == null) return;
+      let t1 = cs[0].time;
+      for (const c of cs) { if (c.time <= t) t1 = c.time; else break; }
       const risk = price * 0.0035;
-      const next = mode === "long"
-        ? { direction: "buy", entry: price, stop: price - risk, target: price + risk * 2 }
-        : { direction: "sell", entry: price, stop: price + risk, target: price - risk * 2 };
-      setPlan(next);
-      planRef.current = next;
-      onPlanChange?.(next);
+      const dir = mode === "long" ? "buy" : "sell";
+      const plan = {
+        id: `p${Date.now()}`,
+        direction: dir,
+        entry: price,
+        stop: dir === "buy" ? price - risk : price + risk,
+        target: dir === "buy" ? price + risk * 2 : price - risk * 2,
+        t1,
+        t2: t1 + barDur * 30,
+        status: "draft",
+      };
+      const next = [...plansRef.current, plan];
+      setLocalPlans(next);
+      plansRef.current = next;
+      onSelectPlan?.(plan.id);
+      onPlansChange?.(next);
     });
 
     return () => {
@@ -100,27 +165,6 @@ export default function DeskChart({ candles, drawings, theme, chartKey, toolMode
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
-
-  // ── Tool arm/disarm + direction flips ──
-  useEffect(() => {
-    if (toolMode === "off") {
-      if (planRef.current) { setPlan(null); planRef.current = null; onPlanChange?.(null); }
-      return;
-    }
-    const want = toolMode === "long" ? "buy" : "sell";
-    const cur = planRef.current;
-    if (cur && cur.direction !== want) {
-      const risk = Math.abs(cur.entry - cur.stop);
-      const reward = Math.abs(cur.target - cur.entry);
-      const flipped = want === "buy"
-        ? { direction: "buy", entry: cur.entry, stop: cur.entry - risk, target: cur.entry + reward }
-        : { direction: "sell", entry: cur.entry, stop: cur.entry + risk, target: cur.entry - reward };
-      setPlan(flipped);
-      planRef.current = flipped;
-      onPlanChange?.(flipped);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toolMode]);
 
   // ── Data + drawn levels ──
   useEffect(() => {
@@ -178,110 +222,161 @@ export default function DeskChart({ candles, drawings, theme, chartKey, toolMode
     setLayoutTick((t) => t + 1);
   }, [candles, drawings, chartKey]);
 
-  // ── Position tool geometry ──
-  const series = seriesRef.current;
-  const paneW = chartRef.current ? chartRef.current.paneSize().width : 0;
-  const yOf = (price) => (series && price != null ? series.priceToCoordinate(price) : null);
-  const yEntry = plan ? yOf(plan.entry) : null;
-  const yStop = plan ? yOf(plan.stop) : null;
-  const yTarget = plan ? yOf(plan.target) : null;
-  const isLong = plan?.direction === "buy";
-  const riskDist = plan ? Math.abs(plan.entry - plan.stop) : 0;
-  const rewardDist = plan ? Math.abs(plan.target - plan.entry) : 0;
-  const rr = riskDist > 0 ? rewardDist / riskDist : 0;
-  const riskAmt = plan ? (sizeNotional || 0) * (riskDist / plan.entry) : 0;
-  const rewardAmt = plan ? (sizeNotional || 0) * (rewardDist / plan.entry) : 0;
-
-  const startDrag = (handle) => (e) => {
-    if (!planRef.current) return;
+  // ── Dragging (prices + box edge) ──
+  const startDrag = (planId, handle) => (e) => {
     e.preventDefault();
     e.stopPropagation();
-    dragRef.current = { handle };
+    onSelectPlan?.(planId);
+    dragRef.current = { planId, handle };
     const move = (ev) => {
       const host = hostRef.current;
+      const chart = chartRef.current;
       const s = seriesRef.current;
-      const cur = planRef.current;
-      if (!host || !s || !cur) return;
+      if (!host || !chart || !s) return;
       const rect = host.getBoundingClientRect();
-      const price = s.coordinateToPrice(ev.clientY - rect.top);
-      if (price == null || price <= 0) return;
-      const minDist = cur.entry * 0.0002;
+      const cur = plansRef.current.find((p) => p.id === planId);
+      if (!cur) return;
       let next = null;
-      if (handle === "entry") {
-        const delta = price - cur.entry;
-        next = { ...cur, entry: price, stop: cur.stop + delta, target: cur.target + delta };
-      } else if (handle === "stop") {
-        const stop = cur.direction === "buy" ? Math.min(price, cur.entry - minDist) : Math.max(price, cur.entry + minDist);
-        next = { ...cur, stop };
-      } else if (handle === "target") {
-        const target = cur.direction === "buy" ? Math.max(price, cur.entry + minDist) : Math.min(price, cur.entry - minDist);
-        next = { ...cur, target };
+      if (handle === "edge") {
+        const cs = candlesRef.current || [];
+        const barDur = cs.length > 1 ? cs[1].time - cs[0].time : 60;
+        const t = chart.timeScale().coordinateToTime(ev.clientX - rect.left);
+        if (t == null) return;
+        next = { ...cur, t2: Math.max(cur.t1 + barDur * 2, t) };
+      } else {
+        const price = s.coordinateToPrice(ev.clientY - rect.top);
+        if (price == null || price <= 0) return;
+        const minDist = cur.entry * 0.0002;
+        if (handle === "entry") {
+          const delta = price - cur.entry;
+          next = { ...cur, entry: price, stop: cur.stop + delta, target: cur.target + delta };
+        } else if (handle === "stop") {
+          const stop = cur.direction === "buy" ? Math.min(price, cur.entry - minDist) : Math.max(price, cur.entry + minDist);
+          next = { ...cur, stop };
+        } else if (handle === "target") {
+          const target = cur.direction === "buy" ? Math.max(price, cur.entry + minDist) : Math.min(price, cur.entry - minDist);
+          next = { ...cur, target };
+        }
       }
-      if (next) { setPlan(next); planRef.current = next; }
+      if (next) {
+        const arr = plansRef.current.map((p) => (p.id === planId ? next : p));
+        setLocalPlans(arr);
+        plansRef.current = arr;
+      }
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       dragRef.current = null;
-      if (planRef.current) onPlanChange?.(planRef.current);
+      onPlansChange?.(plansRef.current);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
 
-  const clearPlan = () => {
-    setPlan(null);
-    planRef.current = null;
-    onPlanChange?.(null);
+  // ── Geometry for render ──
+  const chart = chartRef.current;
+  const series = seriesRef.current;
+  const tsApi = chart ? chart.timeScale() : null;
+  const geom = (p) => {
+    if (!series || !tsApi) return null;
+    const x1 = tsApi.timeToCoordinate(p.t1);
+    const x2 = tsApi.timeToCoordinate(p.t2);
+    const yE = series.priceToCoordinate(p.entry);
+    const yS = series.priceToCoordinate(p.stop);
+    const yT = series.priceToCoordinate(p.target);
+    if (x1 == null || x2 == null || yE == null || yS == null || yT == null) return null;
+    return { x: Math.min(x1, x2), w: Math.abs(x2 - x1), yE, yS, yT };
   };
+
+  const active = localPlans.find((p) => p.id === activePlanId) || null;
+  const activeKind = active ? orderKindFor(active, liveQuote?.bid, liveQuote?.ask) : "market";
+  const riskDist = active ? Math.abs(active.entry - active.stop) : 0;
+  const rewardDist = active ? Math.abs(active.target - active.entry) : 0;
+  const rr = riskDist > 0 ? rewardDist / riskDist : 0;
+  const riskAmt = active ? (sizeNotional || 0) * (riskDist / active.entry) : 0;
+  const rewardAmt = active ? (sizeNotional || 0) * (rewardDist / active.entry) : 0;
 
   return (
     <div className="desk-lw-wrap">
       <div ref={hostRef} className="desk-lw-chart" />
 
-      {toolMode !== "off" && !plan && (
+      {toolMode !== "off" && (
         <div className="desk-tool-hint">
-          Click the chart to place your {toolMode === "long" ? "long" : "short"} entry — then drag the red zone to your stop and the green to your target.
+          Click the chart to drop a {toolMode} plan box — drag its lines for entry, stop and target, and its right edge to resize. Click an existing box to select it.
         </div>
       )}
 
-      {plan && yEntry != null && yStop != null && yTarget != null && (
-        <>
-          <div
-            className="desk-zone risk"
-            style={{ top: Math.min(yEntry, yStop), height: Math.abs(yEntry - yStop), width: paneW }}
-          />
-          <div
-            className="desk-zone reward"
-            style={{ top: Math.min(yEntry, yTarget), height: Math.abs(yEntry - yTarget), width: paneW }}
-          />
-          <div className="desk-strip entry" style={{ top: yEntry - 7, width: paneW }} onPointerDown={startDrag("entry")}>
-            <span className="desk-strip-tag">Entry {fmtPx(plan.entry)} — drag to move all</span>
+      {localPlans.map((p) => {
+        const g = geom(p);
+        if (!g) return null;
+        const isActive = p.id === activePlanId;
+        const isLong = p.direction === "buy";
+        return (
+          <div key={p.id} className={`desk-plan ${isActive ? "active" : ""} ${p.status}`}>
+            <div className="desk-zone risk" style={{ left: g.x, top: Math.min(g.yE, g.yS), width: g.w, height: Math.abs(g.yE - g.yS) }} />
+            <div className="desk-zone reward" style={{ left: g.x, top: Math.min(g.yE, g.yT), width: g.w, height: Math.abs(g.yE - g.yT) }} />
+            <div
+              className="desk-strip entry"
+              style={{ left: g.x, top: g.yE - 7, width: g.w }}
+              onPointerDown={isActive ? startDrag(p.id, "entry") : () => onSelectPlan?.(p.id)}
+            >
+              <span className="desk-strip-tag">
+                {isLong ? "LONG" : "SHORT"} {fmtPx(p.entry)}{p.status === "armed" ? ` · ${ORDER_LABEL[p.orderType] || "ARMED"}` : p.status === "filled" ? " · OPEN" : ""}
+              </span>
+            </div>
+            {isActive && (
+              <>
+                <div className="desk-strip stop" style={{ left: g.x, top: g.yS - 7, width: g.w }} onPointerDown={startDrag(p.id, "stop")}>
+                  <span className="desk-strip-tag">Stop {fmtPx(p.stop)}</span>
+                </div>
+                <div className="desk-strip target" style={{ left: g.x, top: g.yT - 7, width: g.w }} onPointerDown={startDrag(p.id, "target")}>
+                  <span className="desk-strip-tag">Target {fmtPx(p.target)}</span>
+                </div>
+                <div className="desk-edge" style={{ left: g.x + g.w - 5, top: Math.min(g.yS, g.yT), height: Math.abs(g.yT - g.yS) }} onPointerDown={startDrag(p.id, "edge")} title="Drag to resize the box" />
+              </>
+            )}
           </div>
-          <div className="desk-strip stop" style={{ top: yStop - 7, width: paneW }} onPointerDown={startDrag("stop")}>
-            <span className="desk-strip-tag">Stop {fmtPx(plan.stop)}</span>
-          </div>
-          <div className="desk-strip target" style={{ top: yTarget - 7, width: paneW }} onPointerDown={startDrag("target")}>
-            <span className="desk-strip-tag">Target {fmtPx(plan.target)}</span>
-          </div>
+        );
+      })}
 
-          <div className="desk-tool-panel">
-            <div className="desk-tool-title">
-              <span className={`demo-dir ${isLong ? "buy" : "sell"}`}>{isLong ? "LONG" : "SHORT"}</span>
-              <strong>RR 1:{rr ? rr.toFixed(1) : "—"}</strong>
-              <button className="desk-tool-x" onClick={clearPlan} aria-label="Clear position plan">✕</button>
-            </div>
-            <div className="desk-tool-rows">
-              <span>Risk <b className="neg">−{fmtUSD(riskAmt)}</b> to {fmtPx(plan.stop)}</span>
-              <span>Reward <b className="pos">+{fmtUSD(rewardAmt)}</b> to {fmtPx(plan.target)}</span>
-              <span className="desk-tool-note">Size from your ticket ({fmtUSD(sizeNotional || 0)}). Trading fills at live market — stop/target shift to keep this geometry.</span>
-            </div>
-            {notice && <div className="desk-tool-notice">{notice}</div>}
-            <button className="desk-tool-trade" onClick={() => onTrade?.(planRef.current)}>
-              Trade this position
-            </button>
+      {active && (
+        <div className="desk-tool-panel">
+          <div className="desk-tool-title">
+            <span className={`demo-dir ${active.direction}`}>{active.direction === "buy" ? "LONG" : "SHORT"}</span>
+            <strong>RR 1:{rr ? rr.toFixed(1) : "—"}</strong>
+            <button className="desk-tool-x" onClick={() => onRemovePlan?.(active.id)} aria-label="Remove plan">✕</button>
           </div>
-        </>
+          <div className="desk-tool-rows">
+            <span>Entry <b>{fmtPx(active.entry)}</b></span>
+            <span>Risk <b className="neg">−{fmtUSD(riskAmt)}</b> to {fmtPx(active.stop)}</span>
+            <span>Reward <b className="pos">+{fmtUSD(rewardAmt)}</b> to {fmtPx(active.target)}</span>
+            {active.status === "draft" && (
+              <span className="desk-tool-note">
+                {activeKind === "market"
+                  ? "Entry is at the market — trading fills now, stop/target shift to keep this geometry."
+                  : `Entry is away from the market — trading arms a ${ORDER_LABEL[activeKind]} that fills when price reaches ${fmtPx(active.entry)}.`}
+              </span>
+            )}
+            {active.status === "armed" && (
+              <span className="desk-tool-note">{ORDER_LABEL[active.orderType] || "Pending order"} armed — drag the stop/target to adjust the order. Size {fmtUSD(sizeNotional || 0)}.</span>
+            )}
+            {active.status === "filled" && (
+              <span className="desk-tool-note">Position open — dragging the stop/target adjusts the live trade.</span>
+            )}
+          </div>
+          {notice && <div className="desk-tool-notice">{notice}</div>}
+          {active.status === "draft" && (
+            <button className="desk-tool-trade" onClick={() => onTrade?.(active)}>
+              {activeKind === "market" ? "Trade this position" : `Place ${ORDER_LABEL[activeKind]}`}
+            </button>
+          )}
+          {active.status === "armed" && (
+            <button className="desk-tool-trade cancel" onClick={() => onCancelOrder?.(active)}>
+              Cancel order
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
