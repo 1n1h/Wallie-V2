@@ -412,7 +412,15 @@ export default function DemoDesk() {
     } else {
       lines.push("No open demo positions right now.");
     }
-    lines.push(`They are looking at ${symbol} on the ${interval} timeframe${pxSel ? ` (live price ${fmtPx(pxSel.mid)})` : ""}. Answer with their desk in mind. This is education about their practice trading — never place trades for them; they press the buttons.`);
+    if (orders.length) {
+      lines.push("Pending demo orders (armed on the chart, NOT filled yet — do not call these open positions):");
+      for (const o of orders) {
+        const px = pxFor(o.symbol);
+        const dist = px ? ` — live price now ${fmtPx(px.mid)}, which is ${fmtPx(Math.abs(o.entryPrice - px.mid))} from the entry` : "";
+        lines.push(`- ${o.symbol} ${ORDER_LABEL[o.orderType] || o.orderType} (${o.direction === "buy" ? "would open LONG" : "would open SHORT"} when price reaches the entry): entry ${fmtPx(o.entryPrice)}${o.stop ? `, stop loss ${fmtPx(o.stop)}` : ""}${o.target ? `, take profit ${fmtPx(o.target)}` : ""}, size ${fmtUSD(o.notional)} at 1:${o.leverage}${dist}.`);
+      }
+    }
+    lines.push(`They are looking at ${symbol} on the ${interval} timeframe${pxSel ? ` (live price ${fmtPx(pxSel.mid)})` : ""}. Answer with their desk in mind. The positions and pending orders above carry exact entry, stop and target prices: when the user asks about "my stop", "my order" or "the trade I just set up", answer from that data — never ask the user for prices you already have, and never claim you can't see their desk. This is education about their practice trading — never place trades for them; they press the buttons.`);
     return lines.join("\n");
   };
 
