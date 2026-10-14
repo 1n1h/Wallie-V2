@@ -6,6 +6,12 @@
   padding: 18px 20px 90px;
   background: #201c18;
   color: #f1ede4;
+  color-scheme: dark;
+}
+/* Native dropdown lists must follow the theme (dark popup, light text) */
+.demo-input option {
+  background-color: #2a2724;
+  color: #f1ede4;
 }
 .demo-wrap .demo-card {
   background: #2a2724;
@@ -247,7 +253,8 @@
 .desk-chat-send:disabled { opacity: 0.45; cursor: default; }
 
 /* Light theme */
-[data-theme="light"] .demo-wrap { background: #f4f0e7; color: #26221c; }
+[data-theme="light"] .demo-wrap { background: #f4f0e7; color: #26221c; color-scheme: light; }
+[data-theme="light"] .demo-input option { background-color: #fcfaf4; color: #26221c; }
 [data-theme="light"] .demo-wrap .demo-card {
   background: #fcfaf4; border-color: rgba(90, 78, 60, 0.14);
   box-shadow: 0 6px 24px rgba(90, 78, 60, 0.08);
