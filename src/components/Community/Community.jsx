@@ -6,15 +6,23 @@ import {
   query, orderBy, serverTimestamp, arrayUnion, arrayRemove, increment, onSnapshot, where, limit
 } from "firebase/firestore";
 import { db } from "../../firebase";
+import { ROSTER } from "../../config/demo";
 import wallieLogo from "../../assets/wallie-mark.png";
 import "./Community.css";
+
+// ── Wallie Community ─────────────────────────────────────────────────
+// A traders' social feed: share setups, charts (pictures + text) and
+// actual trades (pulled from your Demo Desk journal or entered by hand),
+// follow other traders, learn from their posts, level up with XP.
+// Data model is unchanged from the original community build so every
+// existing post, like, comment, follow and DM keeps working.
 
 const Community = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
   // Navigation
-  const [activeView, setActiveView] = useState("home"); // home, search, notifications, create, messages, profile
+  const [activeView, setActiveView] = useState("home"); // home, search, notifications, messages, profile
   const [selectedPost, setSelectedPost] = useState(null);
 
   // Posts
@@ -26,11 +34,23 @@ const Community = () => {
   const [posting, setPosting] = useState(false);
   const [commentText, setCommentText] = useState({});
   const [expandedComments, setExpandedComments] = useState({});
+  const [feedFilter, setFeedFilter] = useState("all"); // all, trades, charts, following
+
+  // Trade sharing (composer)
+  const [tradePanel, setTradePanel] = useState(false);
+  const [tradeSource, setTradeSource] = useState("demo"); // demo, manual
+  const [demoTrades, setDemoTrades] = useState(null); // null = not loaded yet
+  const [tradeDraft, setTradeDraft] = useState(null); // {symbol, direction, entry, exit, pnl, rMultiple, pnlPct, source}
+  const [manSymbol, setManSymbol] = useState("GOLD");
+  const [manDir, setManDir] = useState("buy");
+  const [manEntry, setManEntry] = useState("");
+  const [manExit, setManExit] = useState("");
 
   // User
   const [userProfile, setUserProfile] = useState(null);
   const [profileViewUser, setProfileViewUser] = useState(null);
   const [profilePosts, setProfilePosts] = useState([]);
+  const [profileTab, setProfileTab] = useState("posts"); // posts, pictures, trades
   const [editingBio, setEditingBio] = useState(false);
   const [bioText, setBioText] = useState("");
 
@@ -55,6 +75,7 @@ const Community = () => {
 
   const fileInputRef = useRef(null);
   const dmEndRef = useRef(null);
+  const composerRef = useRef(null);
 
   // ===== DATA LOADING =====
 
@@ -141,7 +162,6 @@ const Community = () => {
         const snap = await getDocs(q);
         setProfilePosts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (err) {
-        // Composite index may not exist — fallback to filtering from all loaded posts
         console.warn("Profile posts query failed (index may be needed), using client-side filter:", err.message);
         const filtered = posts
           .filter(p => p.authorId === profileViewUser.id)
@@ -172,7 +192,6 @@ const Community = () => {
   // Load notifications
   useEffect(() => {
     if (!user || activeView !== "notifications") return;
-    // Load recent activity on user's posts
     const loadNotifs = async () => {
       const myPosts = posts.filter(p => p.authorId === user.uid);
       const notifs = myPosts.flatMap(p => {
@@ -181,7 +200,7 @@ const Community = () => {
           items.push({
             type: "like",
             count: p.likes.length,
-            postText: p.text?.slice(0, 40) || "your post",
+            postText: p.text?.slice(0, 40) || (p.trade ? `${p.trade.symbol} trade` : "your post"),
             time: p.createdAt,
           });
         }
@@ -189,7 +208,7 @@ const Community = () => {
           items.push({
             type: "comment",
             count: p.commentCount,
-            postText: p.text?.slice(0, 40) || "your post",
+            postText: p.text?.slice(0, 40) || (p.trade ? `${p.trade.symbol} trade` : "your post"),
             time: p.createdAt,
           });
         }
@@ -225,6 +244,8 @@ const Community = () => {
     return { title: "Rookie", color: "#0A84FF", badge: "🌱" };
   };
 
+  const levelProgress = (xp) => ((xp || 0) % 100) / 100;
+
   const formatTime = (timestamp) => {
     if (!timestamp) return "";
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -237,10 +258,74 @@ const Community = () => {
     return `${Math.floor(diff / 604800)}w`;
   };
 
+  const fmtPrice = (n) => {
+    if (n == null || isNaN(n)) return "—";
+    const v = Number(n);
+    if (Math.abs(v) >= 1000) return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (Math.abs(v) >= 1) return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    return v.toFixed(5);
+  };
+
+  const fmtMoney = (n) => {
+    if (n == null || isNaN(n)) return "";
+    const v = Number(n);
+    const sign = v > 0 ? "+" : v < 0 ? "−" : "";
+    return `${sign}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  };
+
+  const tradePnlPct = (t) => {
+    if (!t || !t.entry) return null;
+    const dir = t.direction === "sell" ? -1 : 1;
+    return dir * ((t.exit - t.entry) / t.entry) * 100;
+  };
+
   // ===== ACTIONS =====
 
+  const loadDemoTrades = async () => {
+    if (demoTrades !== null || !user) return;
+    try {
+      const q = query(
+        collection(db, "users", user.uid, "demoTrades"),
+        orderBy("closedAt", "desc"),
+        limit(15)
+      );
+      const snap = await getDocs(q);
+      setDemoTrades(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error("Demo trades load error:", err);
+      setDemoTrades([]);
+    }
+  };
+
+  const pickDemoTrade = (t) => {
+    setTradeDraft({
+      symbol: t.symbol,
+      direction: t.direction,
+      entry: t.entryPrice,
+      exit: t.exitPrice,
+      pnl: t.pnl,
+      rMultiple: t.rMultiple,
+      source: "demo",
+    });
+  };
+
+  const applyManualTrade = () => {
+    const entry = parseFloat(manEntry);
+    const exit = parseFloat(manExit);
+    if (!manSymbol || isNaN(entry) || isNaN(exit) || entry <= 0 || exit <= 0) return;
+    setTradeDraft({
+      symbol: manSymbol,
+      direction: manDir,
+      entry,
+      exit,
+      pnl: null,
+      rMultiple: null,
+      source: "manual",
+    });
+  };
+
   const handleCreatePost = async () => {
-    if (!newPostText.trim() && !newPostImage) return;
+    if (!newPostText.trim() && !newPostImage && !tradeDraft) return;
     setPosting(true);
     try {
       await addDoc(collection(db, "communityPosts"), {
@@ -250,16 +335,19 @@ const Community = () => {
         authorLevel: userProfile?.level || 1,
         text: newPostText,
         image: newPostImagePreview || "",
+        trade: tradeDraft || null,
         likes: [],
         commentCount: 0,
         shareCount: 0,
         views: 0,
         createdAt: serverTimestamp(),
       });
-      await awardXP(user.uid, 10);
+      await awardXP(user.uid, tradeDraft ? 15 : 10);
       setNewPostText("");
       setNewPostImage(null);
       setNewPostImagePreview(null);
+      setTradeDraft(null);
+      setTradePanel(false);
       setActiveView("home");
     } catch (err) {
       console.error("Post error:", err);
@@ -290,7 +378,6 @@ const Community = () => {
     await updateDoc(doc(db, "communityPosts", postId), { commentCount: increment(1) });
     await awardXP(user.uid, 5);
     setCommentText(prev => ({ ...prev, [postId]: "" }));
-    // Reload comments
     toggleComments(postId, true);
   };
 
@@ -320,14 +407,12 @@ const Community = () => {
       await updateDoc(doc(db, "users", targetId), {
         followers: isFollowing ? arrayRemove(user.uid) : arrayUnion(user.uid),
       });
-      // Update local state
       setUserProfile(prev => ({
         ...prev,
         following: isFollowing
           ? (prev.following || []).filter(id => id !== targetId)
           : [...(prev.following || []), targetId],
       }));
-      // Update profileViewUser if viewing this user
       if (profileViewUser?.id === targetId) {
         setProfileViewUser(prev => ({
           ...prev,
@@ -364,7 +449,6 @@ const Community = () => {
             canvas.height = h;
             canvas.getContext("2d").drawImage(img, 0, 0, w, h);
             const result = canvas.toDataURL("image/jpeg", q);
-            // base64 string length is ~1.37x the byte size
             if (result.length > targetBytes * 1.37 && q > 0.1) {
               return tryCompress(maxW * 0.8, q - 0.1);
             }
@@ -387,7 +471,6 @@ const Community = () => {
       const compressed = await compressImage(file);
       setNewPostImagePreview(compressed);
     } catch (err) {
-      // Fallback to raw base64
       const reader = new FileReader();
       reader.onloadend = () => setNewPostImagePreview(reader.result);
       reader.readAsDataURL(file);
@@ -428,6 +511,7 @@ const Community = () => {
       } else {
         setProfileViewUser({ id: userId, name: "Trader", xp: 0, level: 1 });
       }
+      setProfileTab("posts");
       setActiveView("profile");
     } catch (err) {
       console.error("Profile load error:", err);
@@ -437,6 +521,7 @@ const Community = () => {
   const viewMyProfile = () => {
     if (userProfile) {
       setProfileViewUser(userProfile);
+      setProfileTab("posts");
       setActiveView("profile");
       setEditingBio(false);
     }
@@ -456,106 +541,141 @@ const Community = () => {
 
   if (!user) { navigate("/signup"); return null; }
 
-  // ===== RENDER POST CARD =====
+  // ===== SHARED PIECES =====
+
+  const Avatar = ({ pic, name, cls = "cm-avatar" }) => (
+    <div className={cls}>
+      {pic ? <img src={pic} alt="" /> : <span>{(name || "T")[0]}</span>}
+    </div>
+  );
+
+  const TradeCard = ({ trade }) => {
+    if (!trade) return null;
+    const pct = tradePnlPct(trade);
+    const pnlKnown = trade.pnl != null;
+    const won = pnlKnown ? trade.pnl > 0 : (pct || 0) > 0;
+    return (
+      <div className={`cm-trade ${won ? "won" : "lost"}`}>
+        <div className="cm-trade-top">
+          <span className="cm-trade-symbol">{trade.symbol}</span>
+          <span className={`cm-trade-dir ${trade.direction}`}>
+            {trade.direction === "sell" ? "SHORT" : "LONG"}
+          </span>
+          {trade.source === "demo" && <span className="cm-trade-src">Demo Desk</span>}
+        </div>
+        <div className="cm-trade-nums">
+          <div className="cm-trade-num">
+            <span className="cm-trade-label">Entry</span>
+            <span className="cm-trade-val">{fmtPrice(trade.entry)}</span>
+          </div>
+          <span className="cm-trade-arrow">→</span>
+          <div className="cm-trade-num">
+            <span className="cm-trade-label">Exit</span>
+            <span className="cm-trade-val">{fmtPrice(trade.exit)}</span>
+          </div>
+          <div className="cm-trade-result">
+            {pnlKnown && <span className={`cm-trade-pnl ${won ? "pos" : "neg"}`}>{fmtMoney(trade.pnl)}</span>}
+            {pct != null && (
+              <span className={`cm-trade-pct ${won ? "pos" : "neg"}`}>
+                {pct > 0 ? "+" : pct < 0 ? "−" : ""}{Math.abs(pct).toFixed(2)}%
+              </span>
+            )}
+            {trade.rMultiple != null && (
+              <span className="cm-trade-r">{Number(trade.rMultiple).toFixed(1)}R</span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ===== POST CARD =====
   const renderPost = (post) => {
     const rank = getRankTitle(post.authorLevel || 1);
     const isLiked = post.likes?.includes(user.uid);
     const comments = expandedComments[post.id];
 
     return (
-      <div className="ig-post" key={post.id}>
-        {/* Post header */}
-        <div className="ig-post-header">
-          <div className="ig-avatar" onClick={() => viewProfile(post.authorId)}>
-            {post.authorPic ? <img src={post.authorPic} alt="" /> : <span>{(post.authorName || "T")[0]}</span>}
+      <article className="cm-post" key={post.id}>
+        <div className="cm-post-head">
+          <div onClick={() => viewProfile(post.authorId)} style={{ cursor: "pointer" }}>
+            <Avatar pic={post.authorPic} name={post.authorName} />
           </div>
-          <div className="ig-post-user" onClick={() => viewProfile(post.authorId)}>
-            <span className="ig-username">{post.authorName}</span>
-            <span className="ig-rank-badge" style={{ color: rank.color }}>{rank.badge} {rank.title}</span>
+          <div className="cm-post-user" onClick={() => viewProfile(post.authorId)}>
+            <span className="cm-username">{post.authorName}</span>
+            <span className="cm-rank" style={{ color: rank.color }}>
+              {rank.badge} {rank.title} · Lvl {post.authorLevel || 1}
+            </span>
           </div>
           {post.authorId !== user.uid && (
             <button
-              className={`ig-follow-btn ${userProfile?.following?.includes(post.authorId) ? "following" : ""}`}
-              onClick={(e) => { e.stopPropagation(); handleFollow(post.authorId); }}
+              className={`cm-follow-btn ${userProfile?.following?.includes(post.authorId) ? "following" : ""}`}
+              onClick={() => handleFollow(post.authorId)}
             >
               {userProfile?.following?.includes(post.authorId) ? "Following" : "Follow"}
             </button>
           )}
-          <span className="ig-post-time">{formatTime(post.createdAt)}</span>
+          <span className="cm-post-time">{formatTime(post.createdAt)}</span>
         </div>
 
-        {/* Post image */}
+        {post.text && <p className="cm-post-text">{post.text}</p>}
+
+        <TradeCard trade={post.trade} />
+
         {post.image && (
-          <div className="ig-post-image">
-            <img src={post.image} alt="Post" onLoad={() => trackView(post.id)} />
+          <div className="cm-post-image">
+            <img src={post.image} alt="Chart shared by a trader" onLoad={() => trackView(post.id)} />
           </div>
         )}
 
-        {/* Post actions */}
-        <div className="ig-post-actions">
-          <div className="ig-actions-left">
-            <button className={`ig-action ${isLiked ? "liked" : ""}`} onClick={() => handleLike(post.id, post.likes || [])}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill={isLiked ? "#ff3040" : "none"} stroke={isLiked ? "#ff3040" : "currentColor"} strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
-            </button>
-            <button className="ig-action" onClick={() => toggleComments(post.id)}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-            </button>
-            <button className="ig-action" onClick={() => handleShare(post.id)}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            </button>
-          </div>
-          <button className="ig-action">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+        <div className="cm-post-actions">
+          <button
+            className={`cm-action ${isLiked ? "liked" : ""}`}
+            onClick={() => handleLike(post.id, post.likes || [])}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill={isLiked ? "#ff3040" : "none"} stroke={isLiked ? "#ff3040" : "currentColor"} strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+            <span>{post.likes?.length || ""}</span>
           </button>
+          <button className="cm-action" onClick={() => toggleComments(post.id)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            <span>{post.commentCount || ""}</span>
+          </button>
+          <button className="cm-action" onClick={() => handleShare(post.id)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span>{post.shareCount || ""}</span>
+          </button>
+          {(post.views || 0) > 0 && <span className="cm-post-views">{post.views} views</span>}
         </div>
 
-        {/* Stats row */}
-        <div className="ig-post-stats">
-          {post.likes?.length > 0 && (
-            <span className="ig-likes">{post.likes.length} {post.likes.length === 1 ? "like" : "likes"}</span>
-          )}
-          {(post.views || 0) > 0 && (
-            <span className="ig-views">{post.views} {post.views === 1 ? "view" : "views"}</span>
-          )}
-          {(post.shareCount || 0) > 0 && (
-            <span className="ig-shares">{post.shareCount} {post.shareCount === 1 ? "share" : "shares"}</span>
-          )}
-        </div>
-
-        {/* Caption */}
-        {post.text && (
-          <p className="ig-caption">
-            <span className="ig-caption-user" onClick={() => viewProfile(post.authorId)}>{post.authorName}</span>
-            {" "}{post.text}
-          </p>
-        )}
-
-        {/* View comments link */}
         {post.commentCount > 0 && !comments && (
-          <button className="ig-view-comments" onClick={() => toggleComments(post.id)}>
+          <button className="cm-view-comments" onClick={() => toggleComments(post.id)}>
             View all {post.commentCount} comments
           </button>
         )}
 
-        {/* Comments */}
         {comments && (
-          <div className="ig-comments">
+          <div className="cm-comments">
             {comments.map((c) => (
-              <div className="ig-comment" key={c.id}>
-                <span className="ig-comment-user" onClick={() => viewProfile(c.authorId)}>
-                  {c.authorName}
-                  <span className="ig-comment-badge" style={{ color: getRankTitle(c.authorLevel || 1).color }}>
-                    {getRankTitle(c.authorLevel || 1).badge}
+              <div className="cm-comment" key={c.id}>
+                <div onClick={() => viewProfile(c.authorId)} style={{ cursor: "pointer" }}>
+                  <Avatar pic={c.authorPic} name={c.authorName} cls="cm-avatar cm-avatar-xs" />
+                </div>
+                <p className="cm-comment-body">
+                  <span className="cm-comment-user" onClick={() => viewProfile(c.authorId)}>
+                    {c.authorName}
+                    <span className="cm-comment-badge" style={{ color: getRankTitle(c.authorLevel || 1).color }}>
+                      {getRankTitle(c.authorLevel || 1).badge}
+                    </span>
                   </span>
-                </span>
-                {" "}{c.text}
+                  {c.text}
+                </p>
               </div>
             ))}
           </div>
         )}
 
-        {/* Add comment */}
-        <div className="ig-add-comment">
+        <div className="cm-add-comment">
+          <Avatar pic={userProfile?.profilePic} name={userProfile?.name} cls="cm-avatar cm-avatar-xs" />
           <input
             placeholder="Add a comment..."
             value={commentText[post.id] || ""}
@@ -563,269 +683,399 @@ const Community = () => {
             onKeyDown={(e) => e.key === "Enter" && handleComment(post.id)}
           />
           {commentText[post.id]?.trim() && (
-            <button className="ig-post-comment-btn" onClick={() => handleComment(post.id)}>Post</button>
+            <button className="cm-comment-post" onClick={() => handleComment(post.id)}>Post</button>
           )}
         </div>
-      </div>
+      </article>
     );
   };
 
+  // ===== COMPOSER =====
+  const manualPct = (() => {
+    const e = parseFloat(manEntry);
+    const x = parseFloat(manExit);
+    if (isNaN(e) || isNaN(x) || e <= 0) return null;
+    return (manDir === "sell" ? -1 : 1) * ((x - e) / e) * 100;
+  })();
+
+  const renderComposer = () => (
+    <div className="cm-composer" ref={composerRef}>
+      <div className="cm-composer-top">
+        <Avatar pic={userProfile?.profilePic} name={userProfile?.name} />
+        <textarea
+          className="cm-composer-input"
+          placeholder="Share a setup, a chart, or a lesson from a trade..."
+          value={newPostText}
+          onChange={(e) => setNewPostText(e.target.value)}
+          rows={2}
+        />
+      </div>
+
+      {newPostImagePreview && (
+        <div className="cm-composer-preview">
+          <img src={newPostImagePreview} alt="Attached chart" />
+          <button onClick={() => { setNewPostImage(null); setNewPostImagePreview(null); }}>✕</button>
+        </div>
+      )}
+
+      {tradeDraft && (
+        <div className="cm-draft-wrap">
+          <TradeCard trade={tradeDraft} />
+          <button className="cm-draft-x" onClick={() => setTradeDraft(null)}>Remove trade ✕</button>
+        </div>
+      )}
+
+      {tradePanel && !tradeDraft && (
+        <div className="cm-trade-panel">
+          <div className="cm-trade-tabs">
+            <button
+              className={tradeSource === "demo" ? "active" : ""}
+              onClick={() => { setTradeSource("demo"); loadDemoTrades(); }}
+            >
+              From my Demo Desk
+            </button>
+            <button
+              className={tradeSource === "manual" ? "active" : ""}
+              onClick={() => setTradeSource("manual")}
+            >
+              Enter a trade
+            </button>
+          </div>
+
+          {tradeSource === "demo" && (
+            <div className="cm-demo-list">
+              {demoTrades === null ? (
+                <p className="cm-hint">Loading your demo trades…</p>
+              ) : demoTrades.length === 0 ? (
+                <p className="cm-hint">
+                  No closed demo trades yet. Take a trade on the Demo Desk and it will show up here, ready to share.
+                </p>
+              ) : (
+                demoTrades.map(t => (
+                  <button className="cm-demo-row" key={t.id} onClick={() => pickDemoTrade(t)}>
+                    <span className={`cm-demo-dir ${t.direction}`}>{t.direction === "sell" ? "SHORT" : "LONG"}</span>
+                    <span className="cm-demo-sym">{t.symbol}</span>
+                    <span className="cm-demo-px">{fmtPrice(t.entryPrice)} → {fmtPrice(t.exitPrice)}</span>
+                    <span className={`cm-demo-pnl ${t.pnl >= 0 ? "pos" : "neg"}`}>{fmtMoney(t.pnl)}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+
+          {tradeSource === "manual" && (
+            <div className="cm-manual">
+              <div className="cm-manual-row">
+                <select className="cm-input" value={manSymbol} onChange={(e) => setManSymbol(e.target.value)}>
+                  {ROSTER.map(r => (
+                    <option key={r.symbol} value={r.symbol}>{r.symbol}</option>
+                  ))}
+                </select>
+                <div className="cm-dir-toggle">
+                  <button className={manDir === "buy" ? "active long" : ""} onClick={() => setManDir("buy")}>Long</button>
+                  <button className={manDir === "sell" ? "active short" : ""} onClick={() => setManDir("sell")}>Short</button>
+                </div>
+              </div>
+              <div className="cm-manual-row">
+                <input className="cm-input" type="number" step="any" placeholder="Entry price" value={manEntry} onChange={(e) => setManEntry(e.target.value)} />
+                <input className="cm-input" type="number" step="any" placeholder="Exit price" value={manExit} onChange={(e) => setManExit(e.target.value)} />
+                {manualPct != null && (
+                  <span className={`cm-manual-pct ${manualPct >= 0 ? "pos" : "neg"}`}>
+                    {manualPct >= 0 ? "+" : "−"}{Math.abs(manualPct).toFixed(2)}%
+                  </span>
+                )}
+              </div>
+              <button className="cm-attach-btn" onClick={applyManualTrade} disabled={manualPct == null}>
+                Attach trade
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="cm-composer-actions">
+        <button className="cm-tool-btn" onClick={() => fileInputRef.current.click()}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          Photo
+        </button>
+        <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePostImage} style={{ display: "none" }} />
+        <button
+          className={`cm-tool-btn ${tradePanel ? "active" : ""}`}
+          onClick={() => { setTradePanel(p => !p); if (!tradePanel) loadDemoTrades(); }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+          Share a trade
+        </button>
+        <button
+          className="cm-post-btn"
+          onClick={handleCreatePost}
+          disabled={posting || (!newPostText.trim() && !newPostImage && !tradeDraft)}
+        >
+          {posting ? "Posting..." : "Post"}
+        </button>
+      </div>
+    </div>
+  );
+
+  // ===== FEED FILTERING =====
+  const visiblePosts = posts.filter(p => {
+    if (feedFilter === "trades") return !!p.trade;
+    if (feedFilter === "charts") return !!p.image;
+    if (feedFilter === "following") {
+      return p.authorId === user.uid || (userProfile?.following || []).includes(p.authorId);
+    }
+    return true;
+  });
+
+  const myRank = getRankTitle(userProfile?.level || 1);
+
   // ===== MAIN LAYOUT =====
   return (
-    <div className="ig-layout">
-      {/* ===== LEFT SIDEBAR ===== */}
-      <aside className="ig-sidebar">
-        <div className="ig-sidebar-logo" onClick={() => setActiveView("home")}>
+    <div className="cm-layout">
+      {/* ===== LEFT NAV ===== */}
+      <aside className="cm-nav">
+        <div className="cm-nav-logo" onClick={() => setActiveView("home")}>
           <img src={wallieLogo} alt="Wallie" />
-          <span>Wallie</span>
+          <span>Community</span>
         </div>
 
-        <nav className="ig-sidebar-nav">
+        <nav className="cm-nav-list">
           <button className={activeView === "home" ? "active" : ""} onClick={() => setActiveView("home")}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill={activeView === "home" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            <span>Home</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill={activeView === "home" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span>Feed</span>
           </button>
           <button className={activeView === "search" ? "active" : ""} onClick={() => setActiveView("search")}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <span>Search</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <span>Find traders</span>
           </button>
           <button className={activeView === "notifications" ? "active" : ""} onClick={() => setActiveView("notifications")}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill={activeView === "notifications" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
-            <span>Notifications</span>
-          </button>
-          <button className={activeView === "create" ? "active" : ""} onClick={() => setActiveView("create")}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-            <span>Create</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill={activeView === "notifications" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+            <span>Activity</span>
           </button>
           <button className={activeView === "messages" ? "active" : ""} onClick={() => { setActiveView("messages"); setActiveDM(null); }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
             <span>Messages</span>
           </button>
           <button className={activeView === "profile" ? "active" : ""} onClick={viewMyProfile}>
-            <div className="ig-nav-avatar">
-              {userProfile?.profilePic ? <img src={userProfile.profilePic} alt="" /> : <span>{(userProfile?.name || "T")[0]}</span>}
-            </div>
+            <Avatar pic={userProfile?.profilePic} name={userProfile?.name} cls="cm-avatar cm-avatar-nav" />
             <span>Profile</span>
           </button>
         </nav>
 
-        <div className="ig-sidebar-bottom">
+        <div className="cm-nav-bottom">
+          <button onClick={() => navigate("/demo")}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+            <span>Demo Desk</span>
+          </button>
           <button onClick={() => navigate("/chat")}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><path d="M14 9a2 2 0 11-4 0"/></svg>
-            <span>Wallie Chat</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3a6 6 0 016 6c0 2.4-1.4 4.2-3 5.3V17a3 3 0 01-6 0v-2.7C7.4 13.2 6 11.4 6 9a6 6 0 016-6z"/><line x1="9" y1="21" x2="15" y2="21"/></svg>
+            <span>Ask Wallie</span>
           </button>
         </div>
       </aside>
 
-      {/* ===== MAIN CONTENT ===== */}
-      <main className="ig-main">
-        {/* HOME FEED */}
+      {/* ===== MAIN ===== */}
+      <main className="cm-main">
         {activeView === "home" && (
-          <div className="ig-home">
-            <div className="ig-feed">
-              {loadingPosts ? (
-                <div className="ig-empty">Loading...</div>
-              ) : posts.length === 0 ? (
-                <div className="ig-empty">No posts yet. Be the first to share!</div>
-              ) : (
-                posts.map(renderPost)
-              )}
-            </div>
-
-            {/* Right sidebar */}
-            <aside className="ig-right-sidebar">
-              {/* Current user */}
-              <div className="ig-rs-user" onClick={viewMyProfile}>
-                <div className="ig-avatar-md">
-                  {userProfile?.profilePic ? <img src={userProfile.profilePic} alt="" /> : <span>{(userProfile?.name || "T")[0]}</span>}
-                </div>
-                <div className="ig-rs-user-info">
-                  <span className="ig-rs-username">{userProfile?.name || "Trader"}</span>
-                  <span className="ig-rs-rank" style={{ color: getRankTitle(userProfile?.level || 1).color }}>
-                    {getRankTitle(userProfile?.level || 1).badge} {getRankTitle(userProfile?.level || 1).title} · Lvl {userProfile?.level || 1}
-                  </span>
-                </div>
-                <span className="ig-rs-xp">{userProfile?.xp || 0} XP</span>
+          <div className="cm-home">
+            <div className="cm-feed-col">
+              <div className="cm-feed-head">
+                <h1>Trader Community</h1>
+                <p>Real trades, real charts, real lessons — learn from how other traders work.</p>
               </div>
 
-              {/* Top Traders */}
-              <div className="ig-rs-section">
-                <div className="ig-rs-section-header">
-                  <span>Top Traders</span>
+              {renderComposer()}
+
+              <div className="cm-filters">
+                {[
+                  ["all", "All posts"],
+                  ["trades", "Trades"],
+                  ["charts", "Charts"],
+                  ["following", "Following"],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    className={`cm-filter ${feedFilter === key ? "active" : ""}`}
+                    onClick={() => setFeedFilter(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="cm-feed">
+                {loadingPosts ? (
+                  <div className="cm-empty">Loading the feed…</div>
+                ) : visiblePosts.length === 0 ? (
+                  <div className="cm-empty">
+                    {feedFilter === "trades" && "No trade posts yet — share one of your Demo Desk trades to start it."}
+                    {feedFilter === "charts" && "No chart posts yet — post a picture of your setup."}
+                    {feedFilter === "following" && "Nothing here yet — follow some traders and their posts will land in this tab."}
+                    {feedFilter === "all" && "No posts yet. Be the first to share a trade or a chart."}
+                  </div>
+                ) : (
+                  visiblePosts.map(renderPost)
+                )}
+              </div>
+            </div>
+
+            {/* Right rail */}
+            <aside className="cm-rail">
+              <div className="cm-card cm-me" onClick={viewMyProfile}>
+                <Avatar pic={userProfile?.profilePic} name={userProfile?.name} cls="cm-avatar cm-avatar-lg" />
+                <div className="cm-me-info">
+                  <span className="cm-me-name">{userProfile?.name || "Trader"}</span>
+                  <span className="cm-me-rank" style={{ color: myRank.color }}>
+                    {myRank.badge} {myRank.title} · Level {userProfile?.level || 1}
+                  </span>
+                  <div className="cm-xp-bar">
+                    <div className="cm-xp-fill" style={{ width: `${levelProgress(userProfile?.xp) * 100}%` }} />
+                  </div>
+                  <span className="cm-me-xp">
+                    {userProfile?.xp || 0} XP · {(userProfile?.xp || 0) % 100}/100 to Level {(userProfile?.level || 1) + 1}
+                  </span>
                 </div>
+              </div>
+
+              <div className="cm-card">
+                <h3 className="cm-card-title">Top Traders</h3>
                 {leaderboard.slice(0, 8).map((u, i) => {
                   const rank = getRankTitle(u.level || 1);
                   return (
-                    <div className="ig-rs-suggestion" key={u.id} onClick={() => viewProfile(u.id)}>
-                      <span className="ig-rs-pos">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}</span>
-                      <div className="ig-avatar-sm">
-                        {u.profilePic ? <img src={u.profilePic} alt="" /> : <span>{(u.name || "T")[0]}</span>}
+                    <div className="cm-lb-row" key={u.id} onClick={() => viewProfile(u.id)}>
+                      <span className="cm-lb-pos">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}</span>
+                      <Avatar pic={u.profilePic} name={u.name} cls="cm-avatar cm-avatar-sm" />
+                      <div className="cm-lb-info">
+                        <span className="cm-lb-name">{u.name || "Trader"}</span>
+                        <span className="cm-lb-rank" style={{ color: rank.color }}>{rank.badge} Lvl {u.level || 1}</span>
                       </div>
-                      <div className="ig-rs-sug-info">
-                        <span className="ig-rs-sug-name">{u.name || "Trader"}</span>
-                        <span className="ig-rs-sug-rank" style={{ color: rank.color }}>{rank.badge} Lvl {u.level || 1}</span>
-                      </div>
-                      <span className="ig-rs-sug-xp">{u.xp || 0}</span>
+                      <span className="cm-lb-xp">{u.xp || 0} XP</span>
                     </div>
                   );
                 })}
+                {leaderboard.length === 0 && <p className="cm-hint">Post, comment and share trades to earn XP and climb the board.</p>}
               </div>
 
-              <p className="ig-rs-footer">Wallie AI Community · {new Date().getFullYear()}</p>
+              <div className="cm-card cm-learn">
+                <h3 className="cm-card-title">Learn the Wallie way</h3>
+                <p>Post your trades — wins <em>and</em> losses. The community levels up by studying real decisions, and Wallie grades the process, not just the P&amp;L.</p>
+              </div>
+
+              <p className="cm-footer">Wallie AI Community · {new Date().getFullYear()}</p>
             </aside>
           </div>
         )}
 
         {/* SEARCH */}
         {activeView === "search" && (
-          <div className="ig-search-page">
-            <div className="ig-search-bar">
+          <div className="cm-page">
+            <h2 className="cm-page-title">Find traders</h2>
+            <div className="cm-search-bar">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input placeholder="Search traders..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />
+              <input placeholder="Search traders by name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />
             </div>
-            <div className="ig-search-results">
+            <div className="cm-search-results">
               {searchResults.map(u => {
                 const rank = getRankTitle(u.level || 1);
                 return (
-                  <div className="ig-search-row" key={u.id} onClick={() => viewProfile(u.id)}>
-                    <div className="ig-avatar">
-                      {u.profilePic ? <img src={u.profilePic} alt="" /> : <span>{(u.name || "T")[0]}</span>}
-                    </div>
-                    <div className="ig-search-info">
-                      <span className="ig-search-name">{u.name}</span>
-                      <span className="ig-search-rank" style={{ color: rank.color }}>{rank.badge} {rank.title} · Lvl {u.level || 1} · {u.xp || 0} XP</span>
+                  <div className="cm-search-row" key={u.id} onClick={() => viewProfile(u.id)}>
+                    <Avatar pic={u.profilePic} name={u.name} />
+                    <div className="cm-search-info">
+                      <span className="cm-search-name">{u.name}</span>
+                      <span className="cm-search-rank" style={{ color: rank.color }}>
+                        {rank.badge} {rank.title} · Lvl {u.level || 1} · {u.xp || 0} XP
+                      </span>
                     </div>
                   </div>
                 );
               })}
-              {searchQuery && searchResults.length === 0 && (
-                <div className="ig-empty">No traders found</div>
-              )}
-              {!searchQuery && (
-                <div className="ig-empty">Search for traders by name</div>
-              )}
+              {searchQuery && searchResults.length === 0 && <div className="cm-empty">No traders found</div>}
+              {!searchQuery && <div className="cm-empty">Search for traders by name — tap one to see their trades and pictures.</div>}
             </div>
           </div>
         )}
 
         {/* NOTIFICATIONS */}
         {activeView === "notifications" && (
-          <div className="ig-notifs-page">
-            <h2 className="ig-page-title">Notifications</h2>
+          <div className="cm-page">
+            <h2 className="cm-page-title">Activity</h2>
             {notifications.length === 0 ? (
-              <div className="ig-empty">No notifications yet. Start posting to get engagement!</div>
+              <div className="cm-empty">No activity yet. Post a trade or a chart to get the conversation going.</div>
             ) : (
               notifications.map((n, i) => (
-                <div className="ig-notif-row" key={i}>
-                  <span className="ig-notif-icon">{n.type === "like" ? "❤️" : "💬"}</span>
+                <div className="cm-notif-row" key={i}>
+                  <span className="cm-notif-icon">{n.type === "like" ? "❤️" : "💬"}</span>
                   <p>
                     <strong>{n.count}</strong> {n.type === "like" ? "likes" : "comments"} on "{n.postText}..."
                   </p>
+                  <span className="cm-notif-time">{formatTime(n.time)}</span>
                 </div>
               ))
             )}
           </div>
         )}
 
-        {/* CREATE POST */}
-        {activeView === "create" && (
-          <div className="ig-create-page">
-            <h2 className="ig-page-title">Create Post</h2>
-            <div className="ig-create-card">
-              <div className="ig-create-top">
-                <div className="ig-avatar">
-                  {userProfile?.profilePic ? <img src={userProfile.profilePic} alt="" /> : <span>{(userProfile?.name || "T")[0]}</span>}
-                </div>
-                <span className="ig-create-name">{userProfile?.name || "Trader"}</span>
-              </div>
-              <textarea
-                className="ig-create-textarea"
-                placeholder="Share a trade idea, chart analysis, or market insight..."
-                value={newPostText}
-                onChange={(e) => setNewPostText(e.target.value)}
-                rows={5}
-              />
-              {newPostImagePreview && (
-                <div className="ig-create-preview">
-                  <img src={newPostImagePreview} alt="Preview" />
-                  <button onClick={() => { setNewPostImage(null); setNewPostImagePreview(null); }}>✕</button>
-                </div>
-              )}
-              <div className="ig-create-bottom">
-                <button className="ig-create-upload" onClick={() => fileInputRef.current.click()}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                  Add Photo
-                </button>
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePostImage} style={{ display: "none" }} />
-                <button className="ig-create-submit" onClick={handleCreatePost} disabled={posting || (!newPostText.trim() && !newPostImage)}>
-                  {posting ? "Sharing..." : "Share"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* MESSAGES */}
         {activeView === "messages" && (
-          <div className="ig-messages-page">
+          <div className="cm-page cm-messages-page">
             {!activeDM ? (
               <>
-                <div className="ig-msg-header">
-                  <h2>Messages</h2>
-                  <button className="ig-new-dm" onClick={() => setShowNewDm(true)}>
+                <div className="cm-msg-header">
+                  <h2 className="cm-page-title">Messages</h2>
+                  <button className="cm-new-dm" onClick={() => setShowNewDm(true)} aria-label="New message">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   </button>
                 </div>
 
                 {showNewDm && (
-                  <div className="ig-new-dm-panel">
+                  <div className="cm-new-dm-panel">
                     <input placeholder="Search users..." value={newDmUser} onChange={(e) => setNewDmUser(e.target.value)} />
                     {allUsers.filter(u => u.name?.toLowerCase().includes(newDmUser.toLowerCase())).slice(0, 8).map(u => (
-                      <div className="ig-dm-user-row" key={u.id} onClick={() => handleStartDM(u)}>
-                        <div className="ig-avatar-sm">{u.profilePic ? <img src={u.profilePic} alt="" /> : <span>{(u.name || "T")[0]}</span>}</div>
+                      <div className="cm-dm-user-row" key={u.id} onClick={() => handleStartDM(u)}>
+                        <Avatar pic={u.profilePic} name={u.name} cls="cm-avatar cm-avatar-sm" />
                         <span>{u.name || "Trader"}</span>
                       </div>
                     ))}
-                    <button className="ig-cancel" onClick={() => setShowNewDm(false)}>Cancel</button>
+                    <button className="cm-cancel" onClick={() => setShowNewDm(false)}>Cancel</button>
                   </div>
                 )}
 
-                <div className="ig-conv-list">
+                <div className="cm-conv-list">
                   {conversations.length === 0 ? (
-                    <div className="ig-empty">No conversations yet</div>
+                    <div className="cm-empty">No conversations yet — open a trader's profile and tap Message.</div>
                   ) : conversations.map(conv => {
                     const otherName = Object.entries(conv.participantNames || {}).find(([k]) => k !== user.uid)?.[1] || "Trader";
                     return (
-                      <div className="ig-conv-row" key={conv.id} onClick={() => setActiveDM(conv.id)}>
-                        <div className="ig-avatar"><span>{otherName[0]}</span></div>
-                        <div className="ig-conv-info">
-                          <span className="ig-conv-name">{otherName}</span>
-                          <span className="ig-conv-preview">{conv.lastMessage || "Start chatting"}</span>
+                      <div className="cm-conv-row" key={conv.id} onClick={() => setActiveDM(conv.id)}>
+                        <Avatar pic="" name={otherName} />
+                        <div className="cm-conv-info">
+                          <span className="cm-conv-name">{otherName}</span>
+                          <span className="cm-conv-preview">{conv.lastMessage || "Start chatting"}</span>
                         </div>
-                        <span className="ig-conv-time">{formatTime(conv.lastMessageAt)}</span>
+                        <span className="cm-conv-time">{formatTime(conv.lastMessageAt)}</span>
                       </div>
                     );
                   })}
                 </div>
               </>
             ) : (
-              <div className="ig-dm-chat">
-                <div className="ig-dm-chat-header">
-                  <button onClick={() => setActiveDM(null)}>
+              <div className="cm-dm-chat">
+                <div className="cm-dm-chat-header">
+                  <button onClick={() => setActiveDM(null)} aria-label="Back">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
                   </button>
                   <span>Chat</span>
                 </div>
-                <div className="ig-dm-messages">
+                <div className="cm-dm-messages">
                   {dmMessages.map(msg => (
-                    <div className={`ig-dm-bubble ${msg.senderId === user.uid ? "mine" : "theirs"}`} key={msg.id}>
+                    <div className={`cm-dm-bubble ${msg.senderId === user.uid ? "mine" : "theirs"}`} key={msg.id}>
                       <p>{msg.text}</p>
                       <span>{formatTime(msg.createdAt)}</span>
                     </div>
                   ))}
                   <div ref={dmEndRef} />
                 </div>
-                <div className="ig-dm-input">
+                <div className="cm-dm-input">
                   <input
                     placeholder="Message..."
                     value={dmInput}
@@ -840,102 +1090,129 @@ const Community = () => {
         )}
 
         {/* PROFILE */}
-        {activeView === "profile" && profileViewUser && (
-          <div className="ig-profile-page">
-            <div className="ig-profile-header">
-              <div className="ig-profile-pic">
-                {profileViewUser.profilePic ? <img src={profileViewUser.profilePic} alt="" /> : <span>{(profileViewUser.name || "T")[0]}</span>}
-              </div>
-              <div className="ig-profile-info">
-                <div className="ig-profile-top-row">
-                  <h2>{profileViewUser.name || "Trader"}</h2>
-                  {profileViewUser.id !== user.uid && (
-                    <>
-                      <button
-                        className={`ig-profile-follow-btn ${userProfile?.following?.includes(profileViewUser.id) ? "following" : ""}`}
-                        onClick={() => handleFollow(profileViewUser.id)}
-                      >
-                        {userProfile?.following?.includes(profileViewUser.id) ? "Following" : "Follow"}
-                      </button>
-                      <button className="ig-profile-msg-btn" onClick={() => { handleStartDM(profileViewUser); setActiveView("messages"); }}>Message</button>
-                    </>
+        {activeView === "profile" && profileViewUser && (() => {
+          const pRank = getRankTitle(profileViewUser.level || 1);
+          const isMe = profileViewUser.id === user.uid;
+          const tabPosts =
+            profileTab === "pictures" ? profilePosts.filter(p => p.image) :
+            profileTab === "trades" ? profilePosts.filter(p => p.trade) :
+            profilePosts;
+          const picPosts = profilePosts.filter(p => p.image);
+          return (
+            <div className="cm-profile-page">
+              <div className="cm-profile-header cm-card">
+                <Avatar pic={profileViewUser.profilePic} name={profileViewUser.name} cls="cm-avatar cm-avatar-xl" />
+                <div className="cm-profile-info">
+                  <div className="cm-profile-top">
+                    <h2>{profileViewUser.name || "Trader"}</h2>
+                    {!isMe && (
+                      <>
+                        <button
+                          className={`cm-follow-btn big ${userProfile?.following?.includes(profileViewUser.id) ? "following" : ""}`}
+                          onClick={() => handleFollow(profileViewUser.id)}
+                        >
+                          {userProfile?.following?.includes(profileViewUser.id) ? "Following" : "Follow"}
+                        </button>
+                        <button className="cm-msg-btn" onClick={() => { handleStartDM(profileViewUser); setActiveView("messages"); }}>
+                          Message
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <span className="cm-profile-rank" style={{ color: pRank.color }}>
+                    {pRank.badge} {pRank.title} · Level {profileViewUser.level || 1} · {profileViewUser.xp || 0} XP
+                  </span>
+                  <div className="cm-xp-bar cm-profile-xpbar">
+                    <div className="cm-xp-fill" style={{ width: `${levelProgress(profileViewUser.xp) * 100}%` }} />
+                  </div>
+                  <div className="cm-profile-stats">
+                    <div><strong>{profilePosts.length}</strong><span>posts</span></div>
+                    <div><strong>{profilePosts.filter(p => p.trade).length}</strong><span>trades</span></div>
+                    <div><strong>{picPosts.length}</strong><span>pictures</span></div>
+                    <div><strong>{profileViewUser.followers?.length || 0}</strong><span>followers</span></div>
+                    <div><strong>{profileViewUser.following?.length || 0}</strong><span>following</span></div>
+                  </div>
+                  {isMe ? (
+                    editingBio ? (
+                      <div className="cm-bio-edit">
+                        <textarea
+                          className="cm-bio-textarea"
+                          value={bioText}
+                          onChange={(e) => setBioText(e.target.value)}
+                          placeholder="Write a bio — your markets, your style, your rules..."
+                          rows={3}
+                          maxLength={200}
+                          autoFocus
+                        />
+                        <div className="cm-bio-actions">
+                          <button className="cm-bio-save" onClick={handleSaveBio}>Save</button>
+                          <button className="cm-bio-cancel" onClick={() => setEditingBio(false)}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="cm-profile-bio editable" onClick={() => { setBioText(profileViewUser.bio || ""); setEditingBio(true); }}>
+                        {profileViewUser.bio || "Tap to add a bio..."}
+                      </p>
+                    )
+                  ) : (
+                    <p className="cm-profile-bio">{profileViewUser.bio || "No bio yet."}</p>
+                  )}
+                  {profileViewUser.tradingExperience && (
+                    <span className="cm-profile-exp">{profileViewUser.tradingExperience}</span>
                   )}
                 </div>
-                <div className="ig-profile-stats">
-                  <div><strong>{profilePosts.length}</strong> posts</div>
-                  <div><strong>{profileViewUser.followers?.length || 0}</strong> followers</div>
-                  <div><strong>{profileViewUser.following?.length || 0}</strong> following</div>
-                  <div><strong>{profileViewUser.xp || 0}</strong> XP</div>
-                  <div><strong>Lvl {profileViewUser.level || 1}</strong></div>
-                </div>
-                <div className="ig-profile-rank" style={{ color: getRankTitle(profileViewUser.level || 1).color }}>
-                  {getRankTitle(profileViewUser.level || 1).badge} {getRankTitle(profileViewUser.level || 1).title}
-                </div>
-
-                {/* Bio section */}
-                {profileViewUser.id === user.uid ? (
-                  editingBio ? (
-                    <div className="ig-bio-edit">
-                      <textarea
-                        className="ig-bio-textarea"
-                        value={bioText}
-                        onChange={(e) => setBioText(e.target.value)}
-                        placeholder="Write a bio..."
-                        rows={3}
-                        maxLength={200}
-                        autoFocus
-                      />
-                      <div className="ig-bio-actions">
-                        <button className="ig-bio-save" onClick={handleSaveBio}>Save</button>
-                        <button className="ig-bio-cancel" onClick={() => setEditingBio(false)}>Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p
-                      className="ig-profile-bio ig-bio-editable"
-                      onClick={() => { setBioText(profileViewUser.bio || ""); setEditingBio(true); }}
-                    >
-                      {profileViewUser.bio || "Tap to add a bio..."}
-                    </p>
-                  )
-                ) : (
-                  <p className="ig-profile-bio">{profileViewUser.bio || "No bio yet."}</p>
-                )}
-
-                {profileViewUser.tradingExperience && (
-                  <span className="ig-profile-exp">{profileViewUser.tradingExperience}</span>
-                )}
               </div>
-            </div>
 
-            {/* Post grid */}
-            <div className="ig-profile-grid">
-              {profilePosts.length === 0 ? (
-                <div className="ig-empty">No posts yet</div>
+              <div className="cm-profile-tabs">
+                {[
+                  ["posts", "Posts"],
+                  ["pictures", "Pictures"],
+                  ["trades", "Trades"],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    className={`cm-ptab ${profileTab === key ? "active" : ""}`}
+                    onClick={() => setProfileTab(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {profileTab === "pictures" ? (
+                <div className="cm-pic-grid">
+                  {tabPosts.length === 0 ? (
+                    <div className="cm-empty">No pictures yet.</div>
+                  ) : (
+                    tabPosts.map(p => (
+                      <div className="cm-pic-item" key={p.id} onClick={() => setSelectedPost(p)}>
+                        <img src={p.image} alt="Trader's chart" />
+                        <div className="cm-pic-overlay">
+                          <span>❤️ {p.likes?.length || 0}</span>
+                          <span>💬 {p.commentCount || 0}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : tabPosts.length === 0 ? (
+                <div className="cm-empty">
+                  {profileTab === "trades" ? "No trades shared yet." : "No posts yet."}
+                </div>
               ) : (
-                profilePosts.map(p => (
-                  <div className="ig-grid-item" key={p.id} onClick={() => { setSelectedPost(p); }}>
-                    {p.image ? (
-                      <img src={p.image} alt="" />
-                    ) : (
-                      <div className="ig-grid-text"><p>{p.text?.slice(0, 80)}</p></div>
-                    )}
-                    <div className="ig-grid-overlay">
-                      <span>❤️ {p.likes?.length || 0}</span>
-                      <span>💬 {p.commentCount || 0}</span>
-                    </div>
-                  </div>
-                ))
+                <div className="cm-feed cm-profile-feed">
+                  {tabPosts.map(renderPost)}
+                </div>
               )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* POST MODAL */}
         {selectedPost && (
-          <div className="ig-modal-overlay" onClick={() => setSelectedPost(null)}>
-            <div className="ig-modal" onClick={(e) => e.stopPropagation()}>
-              <button className="ig-modal-close" onClick={() => setSelectedPost(null)}>✕</button>
+          <div className="cm-modal-overlay" onClick={() => setSelectedPost(null)}>
+            <div className="cm-modal" onClick={(e) => e.stopPropagation()}>
+              <button className="cm-modal-close" onClick={() => setSelectedPost(null)}>✕</button>
               {renderPost(selectedPost)}
             </div>
           </div>
@@ -943,23 +1220,21 @@ const Community = () => {
       </main>
 
       {/* Mobile bottom navigation */}
-      <nav className="ig-mobile-nav">
-        <button className={activeView === "home" ? "active" : ""} onClick={() => setActiveView("home")}>
+      <nav className="cm-mobile-nav">
+        <button className={activeView === "home" ? "active" : ""} onClick={() => setActiveView("home")} aria-label="Feed">
           <svg width="24" height="24" viewBox="0 0 24 24" fill={activeView === "home" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </button>
-        <button className={activeView === "search" ? "active" : ""} onClick={() => setActiveView("search")}>
+        <button className={activeView === "search" ? "active" : ""} onClick={() => setActiveView("search")} aria-label="Find traders">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
-        <button className={activeView === "create" ? "active" : ""} onClick={() => setActiveView("create")}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <button onClick={() => { setActiveView("home"); setTimeout(() => composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); }} aria-label="New post">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="5"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         </button>
-        <button className={activeView === "messages" ? "active" : ""} onClick={() => { setActiveView("messages"); setActiveDM(null); }}>
+        <button className={activeView === "messages" ? "active" : ""} onClick={() => { setActiveView("messages"); setActiveDM(null); }} aria-label="Messages">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
         </button>
-        <button className={activeView === "profile" ? "active" : ""} onClick={viewMyProfile}>
-          <div className="ig-nav-avatar">
-            {userProfile?.profilePic ? <img src={userProfile.profilePic} alt="" /> : <span>{(userProfile?.name || "T")[0]}</span>}
-          </div>
+        <button className={activeView === "profile" ? "active" : ""} onClick={viewMyProfile} aria-label="Profile">
+          <Avatar pic={userProfile?.profilePic} name={userProfile?.name} cls="cm-avatar cm-avatar-nav" />
         </button>
       </nav>
     </div>
