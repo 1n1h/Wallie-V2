@@ -873,6 +873,7 @@ export default function DemoDesk() {
               </>
             ) : levels?.candles?.length ? (
               <DeskChart
+                key={symbol}
                 candles={levels.candles}
                 drawings={showLevels ? levels.drawings : []}
                 theme={theme}

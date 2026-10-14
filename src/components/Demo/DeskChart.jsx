@@ -65,6 +65,12 @@ export default function DeskChart({
   plansRef.current = localPlans;
   candlesRef.current = candles;
   activeRef.current = activePlanId;
+  // Always-latest callbacks: the chart's click handler is registered
+  // once per chart instance, so it must call through a ref — never a
+  // captured prop (a stale closure files new plans under the symbol
+  // that was showing when the chart first mounted, and they vanish).
+  const cbRef = useRef({});
+  cbRef.current = { onSelectPlan, onPlansChange, onTrade, onCancelOrder, onRemovePlan };
 
   // Sync the local mirror from the desk's canonical plans (not mid-drag).
   useEffect(() => {
@@ -121,7 +127,7 @@ export default function DeskChart({
         const ys = [s.priceToCoordinate(p.entry), s.priceToCoordinate(p.stop), s.priceToCoordinate(p.target)];
         if (x1 == null || x2 == null || ys.some((v) => v == null)) continue;
         if (x >= Math.min(x1, x2) && x <= Math.max(x1, x2) && y >= Math.min(...ys) - 6 && y <= Math.max(...ys) + 6) {
-          onSelectPlan?.(p.id);
+          cbRef.current.onSelectPlan?.(p.id);
           return;
         }
       }
@@ -151,8 +157,8 @@ export default function DeskChart({
       const next = [...plansRef.current, plan];
       setLocalPlans(next);
       plansRef.current = next;
-      onSelectPlan?.(plan.id);
-      onPlansChange?.(next);
+      cbRef.current.onSelectPlan?.(plan.id);
+      cbRef.current.onPlansChange?.(next);
     });
 
     return () => {
@@ -280,13 +286,20 @@ export default function DeskChart({
   const tsApi = chart ? chart.timeScale() : null;
   const geom = (p) => {
     if (!series || !tsApi) return null;
-    const x1 = tsApi.timeToCoordinate(p.t1);
-    const x2 = tsApi.timeToCoordinate(p.t2);
+    // A plan's times can fall outside the currently loaded candles (made
+    // on another timeframe/session) — clamp to the pane edges instead of
+    // dropping the box entirely.
+    const paneW = hostRef.current?.clientWidth || 0;
+    let x1 = tsApi.timeToCoordinate(p.t1);
+    let x2 = tsApi.timeToCoordinate(p.t2);
+    if (x1 == null) x1 = 0;
+    if (x2 == null) x2 = paneW;
     const yE = series.priceToCoordinate(p.entry);
     const yS = series.priceToCoordinate(p.stop);
     const yT = series.priceToCoordinate(p.target);
-    if (x1 == null || x2 == null || yE == null || yS == null || yT == null) return null;
-    return { x: Math.min(x1, x2), w: Math.abs(x2 - x1), yE, yS, yT };
+    if (yE == null || yS == null || yT == null) return null;
+    if (x2 < 0 || x1 > paneW) return null;
+    return { x: Math.max(0, Math.min(x1, x2)), w: Math.abs(x2 - x1), yE, yS, yT };
   };
 
   const active = localPlans.find((p) => p.id === activePlanId) || null;

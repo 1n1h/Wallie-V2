@@ -429,5 +429,6 @@
   max-height: 396px; overflow-y: auto;
   scrollbar-width: thin; padding-right: 2px;
 }
-.demo-sentiment-body { height: 352px; }
+.demo-sentiment-body { height: 352px; background: #2a2724; border-radius: 10px; overflow: hidden; }
+[data-theme="light"] .demo-sentiment-body { background: #f8f3e6; }
 .demo-sentiment-tv { height: 100%; width: 100%; }

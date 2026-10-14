@@ -30,7 +30,9 @@ export default function SentimentGauge({ tvSymbol, interval = "1h", theme }) {
     script.innerHTML = JSON.stringify({
       interval,
       width: "100%",
-      isTransparent: true,
+      // NOT transparent: with transparency on, the widget keeps its
+      // light chrome even when colorTheme says dark.
+      isTransparent: false,
       height: "100%",
       symbol: tvSymbol,
       showIntervalTabs: true,
