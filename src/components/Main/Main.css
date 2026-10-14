@@ -2033,3 +2033,28 @@ img.listening {
 @media (max-width: 768px) {
   .chart-card-tv { height: min(76vh, 720px); }
 }
+
+/* Chart card levels overlay — drawn S/R + trendlines over the live chart */
+.chart-card-tv { position: relative; }
+.chart-levels-svg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none;
+}
+.chart-lvl-label {
+  position: absolute; left: 8px; transform: translateY(-50%);
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em;
+  background: rgba(20, 18, 16, 0.85); border: 1px solid;
+  padding: 2px 7px; border-radius: 999px;
+  pointer-events: none; white-space: nowrap;
+}
+.chart-card-cap {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-top: 6px;
+}
+.chart-lvl-toggle {
+  flex-shrink: 0; font: inherit; font-size: 11.5px; font-weight: 600;
+  padding: 5px 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(140, 130, 115, 0.5);
+  background: transparent; color: inherit;
+}
+.chart-lvl-toggle:hover { border-color: #006ced; color: #4b90ff; }

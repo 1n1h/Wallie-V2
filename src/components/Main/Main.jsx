@@ -88,7 +88,10 @@ const PlotFigure = ({ plot }) => {
 // symbol ("show me a chart of US30") — no upload needed. Uses TradingView's
 // classic widgetembed iframe, which always fills its container exactly
 // (the script-loader embed sized itself narrow and would not fill out).
+// When the server computed levels from real market data, they're drawn as
+// an SVG overlay aligned to the same price window the server fetched.
 const ChartCard = ({ chart }) => {
+  const [showLevels, setShowLevels] = useState(true);
   const theme = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
   const src =
     "https://www.tradingview.com/widgetembed/?symbol=" +
@@ -97,6 +100,22 @@ const ChartCard = ({ chart }) => {
     "&theme=" + theme +
     "&style=1&locale=en&toolbarbg=" + (theme === "light" ? "f4f0e7" : "2a2724") +
     "&symboledit=1&saveimage=0&withdateranges=1&hide_side_toolbar=0";
+
+  const levels = chart.levels || null;
+  const yFor = (price) =>
+    Math.max(0, Math.min(100, ((levels.pMax - price) / (levels.pMax - levels.pMin)) * 100));
+  const drawn = levels
+    ? levels.drawings.map((d) => {
+        if (d.type === "hline") {
+          const y = yFor(d.price);
+          return { d, y1: y, y2: y, labelY: y };
+        }
+        const slope = (d.p2 - d.p1) / (d.i2 - d.i1);
+        const atStart = d.p1 - slope * d.i1;
+        const atEnd = d.p1 + slope * (levels.count - 1 - d.i1);
+        return { d, y1: yFor(atStart), y2: yFor(atEnd), labelY: yFor(atStart) };
+      })
+    : [];
 
   return (
     <figure className="chart-card">
@@ -107,8 +126,44 @@ const ChartCard = ({ chart }) => {
           style={{ width: "100%", height: "100%", border: 0, display: "block" }}
           allowFullScreen
         />
+        {showLevels && levels && (
+          <>
+            <svg className="chart-levels-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              {drawn.map(({ d, y1, y2 }, i) => (
+                <line
+                  key={i}
+                  x1="0"
+                  y1={y1}
+                  x2="100"
+                  y2={y2}
+                  stroke={PLOT_TONES[d.tone].stroke}
+                  strokeWidth="1.6"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </svg>
+            {drawn.map(({ d, labelY }, i) => (
+              <span
+                key={i}
+                className="chart-lvl-label"
+                style={{ top: `${labelY}%`, color: PLOT_TONES[d.tone].label, borderColor: PLOT_TONES[d.tone].stroke }}
+              >
+                {d.label}
+              </span>
+            ))}
+          </>
+        )}
       </div>
-      <figcaption className="plot-caption">{chart.symbol} · live chart by TradingView — switch timeframes right here</figcaption>
+      <figcaption className="chart-card-cap">
+        <span className="plot-caption">
+          {chart.symbol} · live chart by TradingView{levels ? " · Wallie's levels, drawn from real market data" : ""}
+        </span>
+        {levels && (
+          <button className="chart-lvl-toggle" onClick={() => setShowLevels(!showLevels)}>
+            {showLevels ? "Hide levels" : "Show levels"}
+          </button>
+        )}
+      </figcaption>
     </figure>
   );
 };

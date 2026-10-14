@@ -376,7 +376,7 @@ function detectChartRequest(prompt) {
   // Broad intent set: a mapped symbol token is ALSO required below, so
   // everyday phrasings ("let me see gold", "what's US30 doing") are safe.
   const intent =
-    /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse)\b/i.test(prompt) ||
+    /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse|support|resistance|levels)\b/i.test(prompt) ||
     /^\s*(us30|nas100|spx500|gold|xauusd|btc|eth|eurusd|gbpusd|sol)\s*(chart)?\s*(please)?\s*$/i.test(prompt);
   if (!intent) return null;
   const upper = prompt.toUpperCase();
@@ -399,6 +399,140 @@ function detectChartRequest(prompt) {
   return { symbol: display, tvSymbol, interval };
 }
 
+// ─── Drawn levels for chart cards ───
+// Support/resistance + trendlines computed from REAL OHLCV data (Yahoo for
+// stocks/indexes/forex, CoinGecko for crypto), so the lines drawn on a
+// requested chart are actual levels at actual prices — not illustrations.
+const CHART_YAHOO_MAP = {
+  SPX: "^GSPC", XAU: "GC=F", XAGUSD: "SI=F", WTI: "CL=F", USOIL: "CL=F",
+  DXY: "DX-Y.NYB", VIX: "^VIX", UK100: "^FTSE", GER40: "^GDAXI", JPN225: "^N225",
+  EURUSD: "EURUSD=X", GBPUSD: "GBPUSD=X", USDJPY: "JPY=X", AUDUSD: "AUDUSD=X",
+  USDCAD: "CAD=X", USDCHF: "CHF=X", GBPJPY: "GBPJPY=X", EURGBP: "EURGBP=X", EURJPY: "EURJPY=X",
+};
+const YAHOO_RANGE = {
+  "1": ["1d", "1m"], "5": ["5d", "5m"], "15": ["5d", "15m"], "30": ["1mo", "30m"],
+  "60": ["3mo", "60m"], "240": ["6mo", "60m"], "D": ["6mo", "1d"], "W": ["2y", "1wk"], "M": ["5y", "1mo"],
+};
+
+function chartDataSource(chartReq) {
+  const display = chartReq.symbol.toUpperCase();
+  const lower = display.toLowerCase();
+  const stripped = display.replace(/USD$/, "");
+  if (CRYPTO_MAP[lower]) return { type: "crypto", coinId: CRYPTO_MAP[lower] };
+  if (stripped !== display && CRYPTO_MAP[stripped.toLowerCase()]) return { type: "crypto", coinId: CRYPTO_MAP[stripped.toLowerCase()] };
+  if (CHART_YAHOO_MAP[display]) return { type: "stock", symbol: CHART_YAHOO_MAP[display] };
+  if (STOCK_ALIASES[lower]) return { type: "stock", symbol: STOCK_ALIASES[lower] };
+  if (stripped !== display && STOCK_ALIASES[stripped.toLowerCase()]) return { type: "stock", symbol: STOCK_ALIASES[stripped.toLowerCase()] };
+  return { type: "stock", symbol: display };
+}
+
+async function fetchRawSeries(source, intervalCode) {
+  try {
+    if (source.type === "crypto") {
+      const days = ["D", "W", "M"].includes(intervalCode) ? 180 : 7;
+      const res = await fetch(`https://api.coingecko.com/api/v3/coins/${source.coinId}/ohlc?vs_currency=usd&days=${days}`, { headers: { accept: "application/json" } });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length < 30) return null;
+      return {
+        ts: data.map((d) => d[0]),
+        highs: data.map((d) => d[2]),
+        lows: data.map((d) => d[3]),
+        closes: data.map((d) => d[4]),
+      };
+    }
+    const [range, iv] = YAHOO_RANGE[intervalCode] || YAHOO_RANGE.D;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(source.symbol)}?interval=${iv}&range=${range}`;
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const result = data.chart?.result?.[0];
+    const q = result?.indicators?.quote?.[0];
+    if (!result || !q || !Array.isArray(result.timestamp)) return null;
+    let rows = result.timestamp
+      .map((t, i) => ({ t: t * 1000, h: q.high?.[i], l: q.low?.[i], c: q.close?.[i] }))
+      .filter((r) => r.h != null && r.l != null && r.c != null);
+    if (intervalCode === "240") {
+      const agg = [];
+      for (let i = 0; i < rows.length; i += 4) {
+        const g = rows.slice(i, i + 4);
+        if (g.length === 0) continue;
+        agg.push({ t: g[0].t, h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)), c: g[g.length - 1].c });
+      }
+      rows = agg;
+    }
+    if (rows.length < 30) return null;
+    return { ts: rows.map((r) => r.t), highs: rows.map((r) => r.h), lows: rows.map((r) => r.l), closes: rows.map((r) => r.c) };
+  } catch (err) {
+    console.error("fetchRawSeries error:", err.message);
+    return null;
+  }
+}
+
+function fmtLevelPrice(p) {
+  if (p >= 1000) return p.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (p >= 100) return p.toFixed(2);
+  if (p >= 1) return p.toFixed(3);
+  return p.toFixed(5);
+}
+
+// Pure drawing computation over a raw series (the visible window is the
+// last 120 candles; the client maps prices to the chart's price axis).
+function levelsFromSeries(series) {
+  const n = series.closes.length;
+  const start = Math.max(0, n - 120);
+  const highs = series.highs.slice(start);
+  const lows = series.lows.slice(start);
+  const closes = series.closes.slice(start);
+  const count = closes.length;
+  if (count < 30) return null;
+  const price = closes[count - 1];
+  const drawings = [];
+  const sr = findSupportResistance(highs, lows, closes);
+  if (sr) {
+    const sups = (sr.supports || []).filter((s) => s.price < price).sort((a, b) => b.price - a.price).slice(0, 2);
+    const ress = (sr.resistances || []).filter((r) => r.price > price).sort((a, b) => a.price - b.price).slice(0, 2);
+    for (const s of sups) drawings.push({ type: "hline", tone: "support", price: s.price, label: `Support ${fmtLevelPrice(s.price)}` });
+    for (const r of ress) drawings.push({ type: "hline", tone: "resistance", price: r.price, label: `Resistance ${fmtLevelPrice(r.price)}` });
+  }
+  const lookback = 3;
+  const swingHighs = [];
+  const swingLows = [];
+  for (let i = lookback; i < count - lookback; i++) {
+    let hi = true;
+    let lo = true;
+    for (let j = 1; j <= lookback; j++) {
+      if (highs[i] <= highs[i - j] || highs[i] <= highs[i + j]) hi = false;
+      if (lows[i] >= lows[i - j] || lows[i] >= lows[i + j]) lo = false;
+    }
+    if (hi) swingHighs.push({ i, price: highs[i] });
+    if (lo) swingLows.push({ i, price: lows[i] });
+  }
+  const lastTwo = (arr) => (arr.length >= 2 ? [arr[arr.length - 2], arr[arr.length - 1]] : null);
+  const lh = lastTwo(swingHighs);
+  if (lh && lh[1].price < lh[0].price && lh[1].i - lh[0].i >= 5) {
+    drawings.push({ type: "trend", tone: "trend", i1: lh[0].i, p1: lh[0].price, i2: lh[1].i, p2: lh[1].price, label: "Trendline" });
+  }
+  const ll = lastTwo(swingLows);
+  if (ll && ll[1].price > ll[0].price && ll[1].i - ll[0].i >= 5) {
+    drawings.push({ type: "trend", tone: "trend", i1: ll[0].i, p1: ll[0].price, i2: ll[1].i, p2: ll[1].price, label: "Trendline" });
+  }
+  if (drawings.length === 0) return null;
+  let pMin = Math.min(...lows);
+  let pMax = Math.max(...highs);
+  const pad = (pMax - pMin) * 0.05;
+  pMin -= pad;
+  pMax += pad;
+  return { drawings, pMin, pMax, count, startTs: series.ts[start], endTs: series.ts[n - 1], currentPrice: price };
+}
+
+async function computeChartLevels(chartReq) {
+  const source = chartDataSource(chartReq);
+  const series = await fetchRawSeries(source, chartReq.interval || "D");
+  if (!series) return null;
+  return levelsFromSeries(series);
+}
+
 // Which half of the chart test failed (symbol vs intent) — for log diagnosis
 function chartMissReason(prompt) {
   if (typeof prompt !== "string" || !prompt.trim()) return null;
@@ -406,7 +540,7 @@ function chartMissReason(prompt) {
   const tokens = upper.split(/[^A-Z0-9]+/).filter(Boolean);
   const symbolHit = upper.includes("S&P") || tokens.some((t) => CHART_TV_MAP[t]) || /\$[A-Za-z]{1,5}\b/.test(prompt);
   const intentHit =
-    /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse)\b/i.test(prompt) ||
+    /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse|support|resistance|levels)\b/i.test(prompt) ||
     /^\s*(us30|nas100|spx500|gold|xauusd|btc|eth|eurusd|gbpusd|sol)\s*(chart)?\s*(please)?\s*$/i.test(prompt);
   if (symbolHit === intentHit) return null; // both or neither — not a near miss
   return symbolHit ? "symbol-no-intent" : "intent-no-symbol";
@@ -1172,6 +1306,25 @@ exports.chat = onCall(
       }
       if (chartReq) {
         finalSystemPrompt += `\n\nCHART DISPLAY: A live interactive ${chartReq.symbol} chart is being displayed to the user inside this reply, below your text. You DO have the ability to show charts in this app — never say you can't display or pull up a chart. Refer to it naturally in one or two short sentences (e.g. "here's ${chartReq.symbol} live") and point out what to look at — trend direction, structure, the nearest level from the market data above if any was provided. Do NOT invent exact live prices that were not provided to you. Keep it brief: the chart is the point.`;
+
+        // Drawn levels: compute real S/R + trendlines from market data and
+        // ship them with the chart so the client can draw them on top.
+        try {
+          const levels = await Promise.race([
+            computeChartLevels(chartReq),
+            new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+          ]);
+          if (levels) {
+            chartReq.levels = levels;
+            console.log(`Chart levels computed: ${levels.drawings.length} drawings for ${chartReq.tvSymbol}`);
+            const lvText = levels.drawings.filter((d) => d.type === "hline").map((d) => d.label).join(" · ");
+            if (lvText) {
+              finalSystemPrompt += `\n\nDRAWN LEVELS: The chart shown to the user has these lines drawn on it, computed from real market data: ${lvText}${levels.drawings.some((d) => d.type === "trend") ? " · plus a trendline" : ""}. Cite these exact prices when you mention support and resistance — they are the same lines the user is looking at.`;
+            }
+          }
+        } catch (err) {
+          console.error("Chart levels error:", err.message);
+        }
       }
 
       const messages = [{ role: "system", content: finalSystemPrompt }];
