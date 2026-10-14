@@ -80,8 +80,30 @@
   border-radius: 14px; overflow: hidden; background: #1d1a16;
 }
 .demo-chart-switches { display: flex; gap: 8px; flex-wrap: wrap; }
-.desk-lw-wrap { position: relative; width: 100%; height: 100%; }
-.desk-lw-chart { width: 100%; height: 100%; }
+.desk-lw-wrap { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
+.desk-lw-chart { width: 100%; flex: 1; min-height: 0; }
+.desk-rsi {
+  height: 88px; flex-shrink: 0; position: relative;
+  border-top: 1px solid rgba(140, 130, 115, 0.22);
+}
+.desk-rsi-chart { width: 100%; height: 100%; }
+.desk-rsi-label {
+  position: absolute; top: 4px; left: 8px; z-index: 5;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em; opacity: 0.55;
+  pointer-events: none;
+}
+.desk-ind-chips {
+  position: absolute; top: 8px; right: 70px; z-index: 6; display: flex; gap: 6px;
+}
+.desk-ind-chips button {
+  font: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(32, 28, 24, 0.72); color: #cfc8b8;
+  border: 1px solid rgba(140, 130, 115, 0.45);
+}
+.desk-ind-chips button.active { background: #006ced; border-color: #006ced; color: #fff; }
+[data-theme="light"] .desk-ind-chips button { background: rgba(252, 250, 244, 0.85); color: #5a5348; }
+[data-theme="light"] .desk-ind-chips button.active { background: #006ced; color: #fff; }
 
 /* Position tool */
 .demo-ivpills button.tool-long.active { background: #2e9e66; }

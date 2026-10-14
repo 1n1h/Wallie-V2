@@ -24,6 +24,52 @@ const fmtPx = (p) => {
 const fmtUSD = (n) =>
   n == null || Number.isNaN(n) ? "—" : Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
+// Indicators, computed in-house from the same candles (lightweight-
+// charts ships none). EMA: standard k=2/(n+1), seeded with the SMA.
+// RSI: Wilder's smoothing, period 14.
+function emaSeries(candles, period) {
+  if (!candles || candles.length < period) return [];
+  const k = 2 / (period + 1);
+  const out = [];
+  let ema = null;
+  candles.forEach((c, i) => {
+    if (i < period - 1) return;
+    if (ema === null) {
+      let s = 0;
+      for (let j = i - period + 1; j <= i; j++) s += candles[j].close;
+      ema = s / period;
+    } else {
+      ema = c.close * k + ema * (1 - k);
+    }
+    out.push({ time: c.time, value: ema });
+  });
+  return out;
+}
+function rsiSeries(candles, period = 14) {
+  if (!candles || candles.length <= period) return [];
+  const out = [];
+  let gain = 0;
+  let loss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = candles[i].close - candles[i - 1].close;
+    if (d >= 0) gain += d; else loss -= d;
+  }
+  gain /= period;
+  loss /= period;
+  const push = (time) => {
+    const value = loss === 0 ? (gain === 0 ? 50 : 100) : 100 - 100 / (1 + gain / loss);
+    out.push({ time, value });
+  };
+  push(candles[period].time);
+  for (let i = period + 1; i < candles.length; i++) {
+    const d = candles[i].close - candles[i - 1].close;
+    gain = (gain * (period - 1) + Math.max(d, 0)) / period;
+    loss = (loss * (period - 1) + Math.max(-d, 0)) / period;
+    push(candles[i].time);
+  }
+  return out;
+}
+
 // What kind of execution a plan's entry implies vs the live market.
 export function orderKindFor(plan, bid, ask) {
   if (!plan || bid == null || ask == null) return "market";
@@ -49,8 +95,21 @@ export default function DeskChart({
   plans, activePlanId, onSelectPlan, onPlansChange, onTrade, onCancelOrder, onRemovePlan, notice,
 }) {
   const hostRef = useRef(null);
+  const rsiHostRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
+  const ema20Ref = useRef(null);
+  const ema50Ref = useRef(null);
+  const rsiChartRef = useRef(null);
+  const rsiSeriesRef = useRef(null);
+  const syncingRef = useRef(false);
+  const [indicators, setIndicators] = useState(() => {
+    try { return { ema: true, rsi: true, ...JSON.parse(localStorage.getItem("wallie_desk_indicators") || "{}") }; }
+    catch { return { ema: true, rsi: true }; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("wallie_desk_indicators", JSON.stringify(indicators)); } catch { /* ignore */ }
+  }, [indicators]);
   const priceLinesRef = useRef([]);
   const trendSeriesRef = useRef([]);
   const fittedKeyRef = useRef(null);
@@ -168,9 +227,71 @@ export default function DeskChart({
       seriesRef.current = null;
       priceLinesRef.current = [];
       trendSeriesRef.current = [];
+      ema20Ref.current = null;
+      ema50Ref.current = null;
+      if (rsiChartRef.current) {
+        try { rsiChartRef.current.remove(); } catch { /* already gone */ }
+        rsiChartRef.current = null;
+        rsiSeriesRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
+
+  // ── Indicators: EMA overlays + a synced RSI pane ──
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const dark = theme !== "light";
+
+    if (indicators.ema && !ema20Ref.current) {
+      const lineOpts = { lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+      ema20Ref.current = chart.addLineSeries({ color: "#4B90FF", ...lineOpts });
+      ema50Ref.current = chart.addLineSeries({ color: "#e8b34b", ...lineOpts });
+      ema20Ref.current.setData(emaSeries(candlesRef.current, 20));
+      ema50Ref.current.setData(emaSeries(candlesRef.current, 50));
+    } else if (!indicators.ema && ema20Ref.current) {
+      try { chart.removeSeries(ema20Ref.current); chart.removeSeries(ema50Ref.current); } catch { /* gone */ }
+      ema20Ref.current = null;
+      ema50Ref.current = null;
+    }
+
+    if (indicators.rsi && !rsiChartRef.current && rsiHostRef.current) {
+      const rc = createChart(rsiHostRef.current, {
+        autoSize: true,
+        layout: { background: { color: "transparent" }, textColor: dark ? "#cfc8b8" : "#5a5348", fontSize: 10 },
+        grid: {
+          vertLines: { color: dark ? "rgba(233,225,207,0.05)" : "rgba(90,78,60,0.08)" },
+          horzLines: { color: dark ? "rgba(233,225,207,0.05)" : "rgba(90,78,60,0.08)" },
+        },
+        rightPriceScale: { borderColor: dark ? "rgba(233,225,207,0.16)" : "rgba(90,78,60,0.22)" },
+        timeScale: { borderColor: dark ? "rgba(233,225,207,0.16)" : "rgba(90,78,60,0.22)", timeVisible: true, secondsVisible: false },
+      });
+      const rs = rc.addLineSeries({ color: "#9b7ede", lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
+      rs.createPriceLine({ price: 70, color: "rgba(224,93,93,0.6)", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "70" });
+      rs.createPriceLine({ price: 30, color: "rgba(63,178,127,0.6)", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "30" });
+      rs.setData(rsiSeries(candlesRef.current));
+      rsiChartRef.current = rc;
+      rsiSeriesRef.current = rs;
+      // Keep the two panes scrolling together.
+      const syncFrom = (src, dst) => (range) => {
+        if (syncingRef.current || !range) return;
+        syncingRef.current = true;
+        try { dst.timeScale().setVisibleLogicalRange(range); } catch { /* mid-teardown */ }
+        syncingRef.current = false;
+      };
+      chart.timeScale().subscribeVisibleLogicalRangeChange(syncFrom(chart, rc));
+      rc.timeScale().subscribeVisibleLogicalRangeChange(syncFrom(rc, chart));
+      const current = chart.timeScale().getVisibleLogicalRange();
+      if (current) rc.timeScale().setVisibleLogicalRange(current);
+      chart.timeScale().applyOptions({ visible: false });
+    } else if (!indicators.rsi && rsiChartRef.current) {
+      try { rsiChartRef.current.remove(); } catch { /* gone */ }
+      rsiChartRef.current = null;
+      rsiSeriesRef.current = null;
+      chart.timeScale().applyOptions({ visible: true });
+    }
+  }, [indicators, theme]);
 
   // ── Data + drawn levels ──
   useEffect(() => {
@@ -220,6 +341,10 @@ export default function DeskChart({
         }
       }
     }
+
+    if (ema20Ref.current) ema20Ref.current.setData(emaSeries(candles, 20));
+    if (ema50Ref.current) ema50Ref.current.setData(emaSeries(candles, 50));
+    if (rsiSeriesRef.current) rsiSeriesRef.current.setData(rsiSeries(candles));
 
     if (fittedKeyRef.current !== chartKey) {
       fittedKeyRef.current = chartKey;
@@ -313,6 +438,17 @@ export default function DeskChart({
   return (
     <div className="desk-lw-wrap">
       <div ref={hostRef} className="desk-lw-chart" />
+      {indicators.rsi && (
+        <div className="desk-rsi">
+          <span className="desk-rsi-label">RSI 14</span>
+          <div ref={rsiHostRef} className="desk-rsi-chart" />
+        </div>
+      )}
+
+      <div className="desk-ind-chips">
+        <button className={indicators.ema ? "active" : ""} onClick={() => setIndicators((s) => ({ ...s, ema: !s.ema }))} title="EMA 20 (blue) and EMA 50 (gold) overlays">EMA</button>
+        <button className={indicators.rsi ? "active" : ""} onClick={() => setIndicators((s) => ({ ...s, rsi: !s.rsi }))} title="RSI 14 pane">RSI</button>
+      </div>
 
       {toolMode !== "off" && (
         <div className="desk-tool-hint">
