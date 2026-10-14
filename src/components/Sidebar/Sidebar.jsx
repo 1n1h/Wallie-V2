@@ -3,12 +3,13 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Context } from "../../context/Context";
 import { useAuth } from "../../context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Menu,
   SquarePen,
   X,
   TrendingUp,
+  MessageCircle,
   Users,
   AtSign,
   HandCoins,
@@ -30,6 +31,8 @@ const Sidebar = ({ mobileOpen, onClose }) => {
     loadChat,
   } = useContext(Context);
   const navigate = useNavigate();
+  const location = useLocation();
+  const onDemo = location.pathname === "/demo";
   const [collapsed, setCollapsed] = useState(false);
   const { user, logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -183,9 +186,14 @@ const Sidebar = ({ mobileOpen, onClose }) => {
 
       {/* Bottom Navigation */}
       <div className="sb-bottom">
-        <div className="sb-icon-btn" onClick={() => { hideTip(); navigate("/demo"); }} onMouseEnter={(e) => showTip(e, "Practice trading on live markets")} onMouseLeave={hideTip}>
-          <TrendingUp size={20} strokeWidth={1.8} />
-          {!collapsed && <span className="sb-label">Demo Desk</span>}
+        <div
+          className={`sb-icon-btn ${onDemo ? "active" : ""}`}
+          onClick={() => { hideTip(); navigate(onDemo ? "/chat" : "/demo"); }}
+          onMouseEnter={(e) => showTip(e, onDemo ? "Back to chat with Wallie" : "Practice trading on live markets")}
+          onMouseLeave={hideTip}
+        >
+          {onDemo ? <MessageCircle size={20} strokeWidth={1.8} /> : <TrendingUp size={20} strokeWidth={1.8} />}
+          {!collapsed && <span className="sb-label">{onDemo ? "Back to Chat" : "Demo Desk"}</span>}
         </div>
 
         <div className="sb-icon-btn" onClick={() => { hideTip(); navigate("/community"); }} onMouseEnter={(e) => showTip(e, "Join the conversation")} onMouseLeave={hideTip}>

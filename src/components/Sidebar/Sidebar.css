@@ -453,3 +453,8 @@
 [data-theme="dark"] .sb-social-btn { background: rgba(245, 242, 234, 0.09); }
 [data-theme="dark"] .sb-social-btn:hover { background: #006ced; color: #fff; }
 .sb-socials .sb-label { margin-left: 2px; }
+
+/* Current-page state for sidebar nav (e.g. Demo Desk becomes Back to Chat) */
+.sb-icon-btn.active { background: rgba(0, 108, 237, 0.16); color: #4b90ff; }
+.sb-icon-btn.active:hover { background: rgba(0, 108, 237, 0.24); }
+[data-theme="light"] .sb-icon-btn.active { background: rgba(0, 108, 237, 0.14); color: #006ced; }
