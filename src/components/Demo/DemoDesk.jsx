@@ -13,7 +13,8 @@ import {
 } from "../../config/demo";
 import DeskChat from "./DeskChat";
 import DeskChart, { orderKindFor, ORDER_LABEL } from "./DeskChart";
-import { MessageCircle } from "lucide-react";
+import SentimentGauge from "./SentimentGauge";
+import { MessageCircle, ChevronUp, ChevronDown } from "lucide-react";
 
 // Desk actions from chat are executed exactly once per message, even if
 // the desk unmounts and remounts within the session.
@@ -74,6 +75,8 @@ export default function DemoDesk() {
   const autoFillRef = useRef(true);
   const [ticketError, setTicketError] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState({ ticket: true, orders: true, positions: true, sentiment: true });
+  const toggleRail = (key) => setRailOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   const collapsedByChatRef = useRef(false);
 
   // Docked chat needs room on desktop: tuck the app sidebar away while
@@ -816,6 +819,7 @@ export default function DemoDesk() {
       </div>
 
       <div className="demo-grid">
+        <div className="demo-main-col">
         {/* Chart card */}
         <div className="demo-chart demo-card">
           <div className="demo-chart-head">
@@ -903,10 +907,38 @@ export default function DemoDesk() {
           </div>
         </div>
 
+        {/* Journal — lives in the chart column, directly under the chart */}
+        <div className="demo-journal demo-card">
+          <div className="demo-journal-head">
+            <h3>Journal — auto-logged from your demo trades</h3>
+            <button className="demo-linkbtn" onClick={() => navigate("/chat")}>Review my journal →</button>
+          </div>
+          {trades.length === 0 && <p className="demo-empty">Closed trades land here automatically, with their R multiple and how they ended.</p>}
+          <div className="demo-trades">
+            {trades.slice(0, 8).map((t) => (
+              <div key={t.id} className="demo-trade">
+                <span className={`demo-trade-bar ${t.pnl >= 0 ? "win" : "loss"}`} />
+                <strong>{t.symbol}</strong>
+                <span>{t.direction === "buy" ? "long" : "short"} · closed <b className={t.pnl >= 0 ? "pos" : "neg"}>{fmtR(t.rMultiple)}</b> ({fmtSigned(t.pnl)})</span>
+                <span className="demo-pos-sub">
+                  held {fmtDur(t.durationMs)} · {t.closeReason === "stop" ? "stop respected" : t.closeReason === "target" ? "hit target" : t.closeReason === "stopout" ? "margin stop-out" : t.closeReason === "reset" ? "closed on reset" : "manual close"} · Logged ✓
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+        </div>
+
         {/* Right rail: ticket + positions */}
         <div className="demo-rail">
           <div className="demo-ticket demo-card">
-            <h3>New position</h3>
+            <div className="demo-card-head">
+              <h3>New position</h3>
+              <button className="demo-collapse" onClick={() => toggleRail("ticket")} aria-label={railOpen.ticket ? "Collapse new position" : "Expand new position"}>
+                {railOpen.ticket ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+            </div>
+            {railOpen.ticket && (<>
             <select className="demo-input" value={symbol} onChange={(e) => { setSymbol(e.target.value); autoFillRef.current = true; }} aria-label="Symbol">
               {ROSTER.map((r) => (
                 <option key={r.symbol} value={r.symbol}>{r.symbol} — {r.name}</option>
@@ -948,12 +980,18 @@ export default function DemoDesk() {
               Open {side === "buy" ? "BUY" : "SELL"} position
             </button>
             <p className="demo-fine">Demo funds only — this never touches a real broker.</p>
+            </>)}
           </div>
 
           {orders.length > 0 && (
             <div className="demo-positions demo-card">
-              <h3>Pending orders <span className="demo-count">{orders.length}</span></h3>
-              {orders.map((o) => (
+              <div className="demo-card-head">
+                <h3>Pending orders <span className="demo-count">{orders.length}</span></h3>
+                <button className="demo-collapse" onClick={() => toggleRail("orders")} aria-label={railOpen.orders ? "Collapse pending orders" : "Expand pending orders"}>
+                  {railOpen.orders ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+              </div>
+              {railOpen.orders && orders.map((o) => (
                 <div key={o.id} className="demo-pos">
                   <div className="demo-pos-main">
                     <span className={`demo-dir ${o.direction}`}>{ORDER_LABEL[o.orderType] || "ORDER"}</span>
@@ -974,8 +1012,14 @@ export default function DemoDesk() {
           )}
 
           <div className="demo-positions demo-card">
-            <h3>Open positions {positions.length > 0 && <span className="demo-count">{positions.length}</span>}</h3>
+            <div className="demo-card-head">
+              <h3>Open positions {positions.length > 0 && <span className="demo-count">{positions.length}</span>}</h3>
+              <button className="demo-collapse" onClick={() => toggleRail("positions")} aria-label={railOpen.positions ? "Collapse open positions" : "Expand open positions"}>
+                {railOpen.positions ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+            </div>
             {rows.length === 0 && <p className="demo-empty">No open positions. Your first trade is a click away.</p>}
+            {railOpen.positions && (<div className="demo-pos-list">
             {rows.map((r) => (
               <div key={r.id} className="demo-pos">
                 <div className="demo-pos-main">
@@ -999,28 +1043,26 @@ export default function DemoDesk() {
                 </div>
               </div>
             ))}
+            </div>)}
           </div>
-        </div>
-      </div>
 
-      {/* Journal strip */}
-      <div className="demo-journal demo-card">
-        <div className="demo-journal-head">
-          <h3>Journal — auto-logged from your demo trades</h3>
-          <button className="demo-linkbtn" onClick={() => navigate("/chat")}>Review my journal →</button>
-        </div>
-        {trades.length === 0 && <p className="demo-empty">Closed trades land here automatically, with their R multiple and how they ended.</p>}
-        <div className="demo-trades">
-          {trades.slice(0, 8).map((t) => (
-            <div key={t.id} className="demo-trade">
-              <span className={`demo-trade-bar ${t.pnl >= 0 ? "win" : "loss"}`} />
-              <strong>{t.symbol}</strong>
-              <span>{t.direction === "buy" ? "long" : "short"} · closed <b className={t.pnl >= 0 ? "pos" : "neg"}>{fmtR(t.rMultiple)}</b> ({fmtSigned(t.pnl)})</span>
-              <span className="demo-pos-sub">
-                held {fmtDur(t.durationMs)} · {t.closeReason === "stop" ? "stop respected" : t.closeReason === "target" ? "hit target" : t.closeReason === "stopout" ? "margin stop-out" : t.closeReason === "reset" ? "closed on reset" : "manual close"} · Logged ✓
-              </span>
+          <div className="demo-positions demo-card">
+            <div className="demo-card-head">
+              <h3>Sentiment — {symbol}</h3>
+              <button className="demo-collapse" onClick={() => toggleRail("sentiment")} aria-label={railOpen.sentiment ? "Collapse sentiment" : "Expand sentiment"}>
+                {railOpen.sentiment ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
             </div>
-          ))}
+            {railOpen.sentiment && (
+              <div className="demo-sentiment-body">
+                <SentimentGauge
+                  tvSymbol={ROSTER_MAP[symbol]?.tv || `NASDAQ:${symbol}`}
+                  interval={{ "1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", D: "1D", W: "1W" }[interval] || "1h"}
+                  theme={theme}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

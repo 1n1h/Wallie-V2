@@ -410,3 +410,24 @@
   .demo-chart-tv { height: 54vh; min-height: 340px; }
   .demo-wrap { padding: 12px 12px 90px; }
 }
+
+/* Chart column: chart + journal stacked; rail cards collapse; the
+   positions list scrolls inside its own card. */
+.demo-main-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.demo-main-col .demo-journal { margin-top: 0; }
+.demo-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.demo-card-head h3 { margin: 0 0 12px; }
+.demo-collapse {
+  font: inherit; cursor: pointer; background: transparent; color: inherit;
+  border: 1px solid rgba(140, 130, 115, 0.35); border-radius: 8px;
+  width: 26px; height: 26px; display: grid; place-items: center; flex-shrink: 0;
+  margin-bottom: 12px; opacity: 0.75;
+}
+.demo-collapse:hover { opacity: 1; border-color: #006ced; color: #4b90ff; }
+.demo-pos-list {
+  display: flex; flex-direction: column;
+  max-height: 396px; overflow-y: auto;
+  scrollbar-width: thin; padding-right: 2px;
+}
+.demo-sentiment-body { height: 352px; }
+.demo-sentiment-tv { height: 100%; width: 100%; }
