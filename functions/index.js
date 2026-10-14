@@ -1175,7 +1175,8 @@ const DESK_ACTIONS_INSTRUCTION =
   "- close_position {symbol} closes that symbol's open position; {\"type\":\"close_position\",\"all\":true} closes everything.\n" +
   "- show_symbol {symbol, interval?: \"1\"|\"5\"|\"15\"|\"60\"|\"240\"|\"D\"|\"W\"} puts that market on their chart with your levels drawn.\n" +
   "Symbols must be desk symbols: " + DESK_SYMBOLS.join(", ") + ". Common names: dollar yen = USDJPY, gold = GOLD, nas = NAS100, dow = US30, euro dollar = EURUSD.\n" +
-  "In your visible text, briefly confirm what you are doing (e.g. \"Opening a USDJPY buy on your desk at 1:50 with a 4R target\"). The app executes it and shows them the fill — never say you cannot place demo trades; on this desk you can. If they did not ask you to do anything, answer normally with NO desk block.";
+  "In your visible text, briefly confirm what you are doing (e.g. \"Opening a USDJPY buy on your desk at 1:50 with a 4R target\"). The app executes it and shows them the fill — never say you cannot place demo trades; on this desk you can. If they did not ask you to do anything, answer normally with NO desk block." +
+  "\nAfter you carry out a desk action, end your visible reply with ONE short question offering a sensible next step, matched to what just happened — e.g. after showing a chart: \"Want the levels drawn, a trade signal, or an alert at the next level?\"; after opening a position: \"Want an alert at your target, or should I keep an eye on the stop?\" Keep it to one line.";
 
 exports.chat = onCall(
   { secrets: [togetherKey, geminiKey, metaKey], timeoutSeconds: 120, cors: true },

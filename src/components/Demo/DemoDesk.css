@@ -327,6 +327,40 @@
 .desk-msg.ai p { margin: 0 0 8px; }
 .desk-msg.ai p:last-child { margin-bottom: 0; }
 .desk-typing { opacity: 0.65; font-style: italic; }
+.desk-chips {
+  display: flex; gap: 7px; padding: 10px 14px 2px;
+  overflow-x: auto; scrollbar-width: none;
+  border-top: 1px solid rgba(140, 130, 115, 0.16);
+}
+.desk-chips::-webkit-scrollbar { display: none; }
+.desk-chip {
+  font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap;
+  cursor: pointer; padding: 6px 12px; border-radius: 999px;
+  background: transparent; color: #4b90ff;
+  border: 1.5px solid rgba(75, 144, 255, 0.55);
+}
+.desk-chip:hover:not(:disabled) { background: rgba(0, 108, 237, 0.14); }
+.desk-chip:disabled { opacity: 0.45; cursor: default; }
+.desk-mic-note {
+  font-size: 11.5px; line-height: 1.4; padding: 6px 14px 0;
+  color: #ff9d9d;
+}
+[data-theme="light"] .desk-mic-note { color: #c0392b; }
+.desk-mic {
+  font: inherit; cursor: pointer; border-radius: 50%;
+  width: 40px; height: 40px; display: grid; place-items: center; flex-shrink: 0;
+  background: transparent; color: inherit;
+  border: 1px solid rgba(140, 130, 115, 0.4);
+}
+.desk-mic:hover { border-color: #006ced; color: #4b90ff; }
+.desk-mic.live {
+  background: #e05d5d; border-color: #e05d5d; color: #fff;
+  animation: deskMicPulse 1.1s ease-in-out infinite;
+}
+@keyframes deskMicPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 93, 93, 0.45); }
+  50% { box-shadow: 0 0 0 7px rgba(224, 93, 93, 0); }
+}
 .desk-chat-composer {
   display: flex; gap: 8px; padding: 12px 14px;
   border-top: 1px solid rgba(140, 130, 115, 0.2);

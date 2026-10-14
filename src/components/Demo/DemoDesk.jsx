@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Context } from "../../context/Context";
 import {
   collection, doc, onSnapshot, addDoc, deleteDoc, setDoc, updateDoc,
-  increment, query, orderBy, limit,
+  increment, query, orderBy, limit, arrayUnion,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthContext";
@@ -384,6 +384,27 @@ export default function DemoDesk() {
   // ── Agentic desk actions: Wallie (via chat) operates the desk ──
   const logAct = (text, ok = true) =>
     setActionLog((prev) => [...prev.slice(-3), { id: `${Date.now()}-${Math.random()}`, text, ok }]);
+
+  // Suggestion-chip quick action: a level alert in the same watches store
+  // the chat's action chips use (surfaces in the Activity tab).
+  const quickWatch = async (sym, level) => {
+    if (!uid || level == null) return;
+    try {
+      await updateDoc(doc(db, "users", uid), {
+        watches: arrayUnion({
+          id: `w${Date.now()}`,
+          symbol: sym,
+          label: `Watching ${sym}`,
+          level,
+          createdAt: Date.now(),
+        }),
+      });
+      logAct(`Alert set — watching ${sym} at ${fmtPx(level)} (it'll show in your Activity tab)`);
+    } catch (err) {
+      console.error("quickWatch:", err);
+      logAct("Couldn't set that alert — try again", false);
+    }
+  };
 
   const executeDeskActions = async (actions) => {
     for (const a of actions) {
@@ -977,7 +998,27 @@ export default function DemoDesk() {
       <button className="demo-ask" onClick={() => setChatOpen(true)}>
         <MessageCircle size={18} /> Ask Wallie
       </button>
-      <DeskChat open={chatOpen} onClose={() => setChatOpen(false)} deskContext={deskContext} actionLog={actionLog} />
+      <DeskChat
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        deskContext={deskContext}
+        actionLog={actionLog}
+        chipCtx={(() => {
+          const hlines = (levels?.drawings || []).filter((d) => d.type === "hline");
+          const mid = pxSel?.mid ?? levels?.currentPrice ?? null;
+          const resAbove = hlines.filter((d) => d.tone === "resistance" && (mid == null || d.price > mid)).map((d) => d.price).sort((a, b) => a - b)[0];
+          const supBelow = hlines.filter((d) => d.tone === "support" && (mid == null || d.price < mid)).map((d) => d.price).sort((a, b) => b - a)[0];
+          const alertLevel = resAbove ?? supBelow ?? null;
+          return {
+            symbol,
+            interval,
+            hasPosOnSymbol: positions.some((p) => p.symbol === symbol),
+            nearestRes: alertLevel != null ? fmtPx(alertLevel) : null,
+            alertLevel,
+          };
+        })()}
+        onQuickWatch={quickWatch}
+      />
     </div>
   );
 }
