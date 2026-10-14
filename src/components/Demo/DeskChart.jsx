@@ -6,12 +6,11 @@ import { createChart, LineStyle } from "lightweight-charts";
 // and the levels are native price lines — pinned to their prices, moving
 // WITH the chart on zoom/pan.
 //
-// Position tool v2 (TradingView-style): plans are BOXES over a time
-// range (drag the right edge to resize), several can live on one chart,
-// and each is kept per symbol by the desk. A plan can be traded at
-// market, or armed as a pending order (buy/sell stop & limit) when its
-// entry sits away from the live price. Dragging an armed/filled plan's
-// stop or target adjusts the actual order/position.
+// Position tool v2: plans are BOXES over a time range (drag the right
+// edge to resize), several can live on one chart, kept per symbol by the
+// desk; a plan can be traded at market or armed as a pending order.
+// Indicators are computed in-house from the same candles and selected
+// from the desk's Indicators dropdown (the `indicators` prop).
 const TONE_COLOR = { support: "#3fb27f", resistance: "#e05d5d", trend: "#4B90FF" };
 
 const fmtPx = (p) => {
@@ -24,25 +23,69 @@ const fmtPx = (p) => {
 const fmtUSD = (n) =>
   n == null || Number.isNaN(n) ? "—" : Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
-// Indicators, computed in-house from the same candles (lightweight-
-// charts ships none). EMA: standard k=2/(n+1), seeded with the SMA.
-// RSI: Wilder's smoothing, period 14.
-function emaSeries(candles, period) {
-  if (!candles || candles.length < period) return [];
+// ── Indicator math (index-aligned helpers) ──
+function emaAligned(values, period) {
+  const out = new Array(values.length).fill(null);
+  if (values.length < period) return out;
   const k = 2 / (period + 1);
+  let s = 0;
+  for (let j = 0; j < period; j++) s += values[j];
+  let ema = s / period;
+  out[period - 1] = ema;
+  for (let i = period; i < values.length; i++) {
+    ema = values[i] * k + ema * (1 - k);
+    out[i] = ema;
+  }
+  return out;
+}
+function smaAligned(values, period) {
+  const out = new Array(values.length).fill(null);
+  let s = 0;
+  for (let i = 0; i < values.length; i++) {
+    s += values[i];
+    if (i >= period) s -= values[i - period];
+    if (i >= period - 1) out[i] = s / period;
+  }
+  return out;
+}
+const toPoints = (candles, aligned) =>
+  aligned.flatMap((v, i) => (v == null ? [] : [{ time: candles[i].time, value: v }]));
+
+function emaSeries(candles, period) {
+  return toPoints(candles, emaAligned(candles.map((c) => c.close), period));
+}
+function smaSeries(candles, period) {
+  return toPoints(candles, smaAligned(candles.map((c) => c.close), period));
+}
+function bollingerSeries(candles, period = 20, mult = 2) {
+  const closes = candles.map((c) => c.close);
+  const mid = smaAligned(closes, period);
+  const upper = new Array(candles.length).fill(null);
+  const lower = new Array(candles.length).fill(null);
+  for (let i = period - 1; i < candles.length; i++) {
+    let s = 0;
+    for (let j = i - period + 1; j <= i; j++) s += (closes[j] - mid[i]) ** 2;
+    const sd = Math.sqrt(s / period);
+    upper[i] = mid[i] + mult * sd;
+    lower[i] = mid[i] - mult * sd;
+  }
+  return { upper: toPoints(candles, upper), mid: toPoints(candles, mid), lower: toPoints(candles, lower) };
+}
+function vwapSeries(candles) {
   const out = [];
-  let ema = null;
-  candles.forEach((c, i) => {
-    if (i < period - 1) return;
-    if (ema === null) {
-      let s = 0;
-      for (let j = i - period + 1; j <= i; j++) s += candles[j].close;
-      ema = s / period;
-    } else {
-      ema = c.close * k + ema * (1 - k);
-    }
-    out.push({ time: c.time, value: ema });
-  });
+  let cumPV = 0;
+  let cumV = 0;
+  let day = null;
+  for (const c of candles) {
+    const d = Math.floor(c.time / 86400);
+    if (d !== day) { day = d; cumPV = 0; cumV = 0; }
+    const v = c.volume || 0;
+    if (v <= 0) continue;
+    const tp = (c.high + c.low + c.close) / 3;
+    cumPV += tp * v;
+    cumV += v;
+    if (cumV > 0) out.push({ time: c.time, value: cumPV / cumV });
+  }
   return out;
 }
 function rsiSeries(candles, period = 14) {
@@ -69,6 +112,59 @@ function rsiSeries(candles, period = 14) {
   }
   return out;
 }
+function macdData(candles, fast = 12, slow = 26, signalPeriod = 9) {
+  const closes = candles.map((c) => c.close);
+  const eF = emaAligned(closes, fast);
+  const eS = emaAligned(closes, slow);
+  const macd = closes.map((_, i) => (eF[i] != null && eS[i] != null ? eF[i] - eS[i] : null));
+  const start = macd.findIndex((v) => v != null);
+  const signal = new Array(candles.length).fill(null);
+  if (start >= 0) {
+    const sub = macd.slice(start);
+    const sigSub = emaAligned(sub, signalPeriod);
+    sigSub.forEach((v, j) => { signal[start + j] = v; });
+  }
+  return {
+    macd: toPoints(candles, macd),
+    signal: toPoints(candles, signal),
+    hist: candles.flatMap((c, i) =>
+      macd[i] != null && signal[i] != null
+        ? [{ time: c.time, value: macd[i] - signal[i], color: macd[i] - signal[i] >= 0 ? "rgba(63,178,127,0.55)" : "rgba(224,93,93,0.55)" }]
+        : []
+    ),
+  };
+}
+function stochData(candles, kPeriod = 14, smooth = 3) {
+  const rawK = new Array(candles.length).fill(null);
+  for (let i = kPeriod - 1; i < candles.length; i++) {
+    let hh = -Infinity;
+    let ll = Infinity;
+    for (let j = i - kPeriod + 1; j <= i; j++) {
+      hh = Math.max(hh, candles[j].high);
+      ll = Math.min(ll, candles[j].low);
+    }
+    rawK[i] = hh === ll ? 50 : ((candles[i].close - ll) / (hh - ll)) * 100;
+  }
+  // %K: smooth the raw values over `smooth` bars (only where raw exists).
+  const k = new Array(candles.length).fill(null);
+  for (let i = 0; i < candles.length; i++) {
+    if (i < kPeriod - 1 + smooth - 1) continue;
+    let s = 0;
+    let ok = true;
+    for (let j = i - smooth + 1; j <= i; j++) { if (rawK[j] == null) { ok = false; break; } s += rawK[j]; }
+    if (ok) k[i] = s / smooth;
+  }
+  void kVals;
+  const d = new Array(candles.length).fill(null);
+  for (let i = 0; i < candles.length; i++) {
+    if (i < kPeriod - 1 + 2 * (smooth - 1)) continue;
+    let s = 0;
+    let ok = true;
+    for (let j = i - smooth + 1; j <= i; j++) { if (k[j] == null) { ok = false; break; } s += k[j]; }
+    if (ok) d[i] = s / smooth;
+  }
+  return { k: toPoints(candles, k), d: toPoints(candles, d) };
+}
 
 // What kind of execution a plan's entry implies vs the live market.
 export function orderKindFor(plan, bid, ask) {
@@ -90,28 +186,27 @@ export const ORDER_LABEL = {
   "sell-limit": "Sell Limit",
 };
 
+const PANE_DEFS = [
+  { key: "rsi", label: "RSI 14" },
+  { key: "macd", label: "MACD 12·26·9" },
+  { key: "stoch", label: "Stochastic 14·3" },
+];
+
 export default function DeskChart({
   candles, drawings, theme, chartKey, toolMode, sizeNotional, liveQuote,
   plans, activePlanId, onSelectPlan, onPlansChange, onTrade, onCancelOrder, onRemovePlan, notice,
+  indicators,
 }) {
+  const ind = indicators || { ema: true, rsi: true };
   const hostRef = useRef(null);
-  const rsiHostRef = useRef(null);
+  const paneHostRefs = useRef({});
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
-  const ema20Ref = useRef(null);
-  const ema50Ref = useRef(null);
-  const rsiChartRef = useRef(null);
-  const rsiSeriesRef = useRef(null);
-  const syncingRef = useRef(false);
-  const [indicators, setIndicators] = useState(() => {
-    try { return { ema: true, rsi: true, ...JSON.parse(localStorage.getItem("wallie_desk_indicators") || "{}") }; }
-    catch { return { ema: true, rsi: true }; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem("wallie_desk_indicators", JSON.stringify(indicators)); } catch { /* ignore */ }
-  }, [indicators]);
   const priceLinesRef = useRef([]);
   const trendSeriesRef = useRef([]);
+  const overlayRefs = useRef({});
+  const panesRef = useRef({});
+  const syncingRef = useRef(false);
   const fittedKeyRef = useRef(null);
   const [, setLayoutTick] = useState(0);
   const [localPlans, setLocalPlans] = useState(plans || []);
@@ -124,10 +219,6 @@ export default function DeskChart({
   plansRef.current = localPlans;
   candlesRef.current = candles;
   activeRef.current = activePlanId;
-  // Always-latest callbacks: the chart's click handler is registered
-  // once per chart instance, so it must call through a ref — never a
-  // captured prop (a stale closure files new plans under the symbol
-  // that was showing when the chart first mounted, and they vanish).
   const cbRef = useRef({});
   cbRef.current = { onSelectPlan, onPlansChange, onTrade, onCancelOrder, onRemovePlan };
 
@@ -172,8 +263,6 @@ export default function DeskChart({
     const ro = new ResizeObserver(bump);
     ro.observe(hostRef.current);
 
-    // Clicks: select a plan whose box was clicked; otherwise, with the
-    // tool armed, drop a new plan at that price/time.
     chart.subscribeClick((param) => {
       if (!param?.point || !seriesRef.current) return;
       const s = seriesRef.current;
@@ -227,71 +316,134 @@ export default function DeskChart({
       seriesRef.current = null;
       priceLinesRef.current = [];
       trendSeriesRef.current = [];
-      ema20Ref.current = null;
-      ema50Ref.current = null;
-      if (rsiChartRef.current) {
-        try { rsiChartRef.current.remove(); } catch { /* already gone */ }
-        rsiChartRef.current = null;
-        rsiSeriesRef.current = null;
+      overlayRefs.current = {};
+      for (const key of Object.keys(panesRef.current)) {
+        try { panesRef.current[key].chart.remove(); } catch { /* gone */ }
       }
+      panesRef.current = {};
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
 
-  // ── Indicators: EMA overlays + a synced RSI pane ──
+  // ── Indicators: overlays + synced panes ──
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
     const dark = theme !== "light";
+    const cs = candlesRef.current || [];
+    const lineOpts = { lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+    const ov = overlayRefs.current;
 
-    if (indicators.ema && !ema20Ref.current) {
-      const lineOpts = { lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
-      ema20Ref.current = chart.addLineSeries({ color: "#4B90FF", ...lineOpts });
-      ema50Ref.current = chart.addLineSeries({ color: "#e8b34b", ...lineOpts });
-      ema20Ref.current.setData(emaSeries(candlesRef.current, 20));
-      ema50Ref.current.setData(emaSeries(candlesRef.current, 50));
-    } else if (!indicators.ema && ema20Ref.current) {
-      try { chart.removeSeries(ema20Ref.current); chart.removeSeries(ema50Ref.current); } catch { /* gone */ }
-      ema20Ref.current = null;
-      ema50Ref.current = null;
-    }
+    const setOverlay = (key, enabled, create) => {
+      if (enabled && !ov[key]) {
+        ov[key] = create();
+      } else if (!enabled && ov[key]) {
+        const seriesList = Array.isArray(ov[key]) ? ov[key] : [ov[key]];
+        for (const s of seriesList) { try { chart.removeSeries(s); } catch { /* gone */ } }
+        delete ov[key];
+      }
+    };
 
-    if (indicators.rsi && !rsiChartRef.current && rsiHostRef.current) {
-      const rc = createChart(rsiHostRef.current, {
-        autoSize: true,
-        layout: { background: { color: "transparent" }, textColor: dark ? "#cfc8b8" : "#5a5348", fontSize: 10 },
-        grid: {
-          vertLines: { color: dark ? "rgba(233,225,207,0.05)" : "rgba(90,78,60,0.08)" },
-          horzLines: { color: dark ? "rgba(233,225,207,0.05)" : "rgba(90,78,60,0.08)" },
-        },
-        rightPriceScale: { borderColor: dark ? "rgba(233,225,207,0.16)" : "rgba(90,78,60,0.22)" },
-        timeScale: { borderColor: dark ? "rgba(233,225,207,0.16)" : "rgba(90,78,60,0.22)", timeVisible: true, secondsVisible: false },
-      });
-      const rs = rc.addLineSeries({ color: "#9b7ede", lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
-      rs.createPriceLine({ price: 70, color: "rgba(224,93,93,0.6)", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "70" });
-      rs.createPriceLine({ price: 30, color: "rgba(63,178,127,0.6)", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "30" });
-      rs.setData(rsiSeries(candlesRef.current));
-      rsiChartRef.current = rc;
-      rsiSeriesRef.current = rs;
-      // Keep the two panes scrolling together.
-      const syncFrom = (src, dst) => (range) => {
-        if (syncingRef.current || !range) return;
-        syncingRef.current = true;
-        try { dst.timeScale().setVisibleLogicalRange(range); } catch { /* mid-teardown */ }
-        syncingRef.current = false;
-      };
-      chart.timeScale().subscribeVisibleLogicalRangeChange(syncFrom(chart, rc));
-      rc.timeScale().subscribeVisibleLogicalRangeChange(syncFrom(rc, chart));
-      const current = chart.timeScale().getVisibleLogicalRange();
-      if (current) rc.timeScale().setVisibleLogicalRange(current);
-      chart.timeScale().applyOptions({ visible: false });
-    } else if (!indicators.rsi && rsiChartRef.current) {
-      try { rsiChartRef.current.remove(); } catch { /* gone */ }
-      rsiChartRef.current = null;
-      rsiSeriesRef.current = null;
-      chart.timeScale().applyOptions({ visible: true });
+    setOverlay("ema", ind.ema, () => {
+      const a = chart.addLineSeries({ color: "#4B90FF", ...lineOpts });
+      const b = chart.addLineSeries({ color: "#e8b34b", ...lineOpts });
+      a.setData(emaSeries(cs, 20));
+      b.setData(emaSeries(cs, 50));
+      return [a, b];
+    });
+    setOverlay("sma", ind.sma, () => {
+      const a = chart.addLineSeries({ color: "#e07b39", ...lineOpts });
+      const b = chart.addLineSeries({ color: "#c65b8f", ...lineOpts });
+      a.setData(smaSeries(cs, 50));
+      b.setData(smaSeries(cs, 200));
+      return [a, b];
+    });
+    setOverlay("bb", ind.bb, () => {
+      const data = bollingerSeries(cs);
+      const opts = { color: "rgba(155,126,222,0.75)", ...lineOpts };
+      const u = chart.addLineSeries(opts);
+      const m = chart.addLineSeries({ color: "rgba(155,126,222,0.45)", ...lineOpts, lineStyle: LineStyle.Dotted });
+      const l = chart.addLineSeries(opts);
+      u.setData(data.upper);
+      m.setData(data.mid);
+      l.setData(data.lower);
+      return [u, m, l];
+    });
+    setOverlay("vwap", ind.vwap, () => {
+      const v = chart.addLineSeries({ color: "#39c2d7", ...lineOpts, lineStyle: LineStyle.Dashed });
+      v.setData(vwapSeries(cs));
+      return [v];
+    });
+
+    // Panes (RSI / MACD / Stochastic) — separate small charts, range-synced.
+    const enabledPanes = PANE_DEFS.filter((d) => ind[d.key]);
+    for (const def of PANE_DEFS) {
+      const enabled = !!ind[def.key];
+      const existing = panesRef.current[def.key];
+      if (enabled && !existing) {
+        const host = paneHostRefs.current[def.key];
+        if (!host) continue;
+        const pc = createChart(host, {
+          autoSize: true,
+          layout: { background: { color: "transparent" }, textColor: dark ? "#cfc8b8" : "#5a5348", fontSize: 10 },
+          grid: {
+            vertLines: { color: dark ? "rgba(233,225,207,0.05)" : "rgba(90,78,60,0.08)" },
+            horzLines: { color: dark ? "rgba(233,225,207,0.05)" : "rgba(90,78,60,0.08)" },
+          },
+          rightPriceScale: { borderColor: dark ? "rgba(233,225,207,0.16)" : "rgba(90,78,60,0.22)" },
+          timeScale: { borderColor: dark ? "rgba(233,225,207,0.16)" : "rgba(90,78,60,0.22)", timeVisible: true, secondsVisible: false },
+        });
+        const pane = { chart: pc, series: {} };
+        if (def.key === "rsi") {
+          const s = pc.addLineSeries({ color: "#9b7ede", lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
+          s.createPriceLine({ price: 70, color: "rgba(224,93,93,0.6)", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "70" });
+          s.createPriceLine({ price: 30, color: "rgba(63,178,127,0.6)", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "30" });
+          s.setData(rsiSeries(cs));
+          pane.series.main = s;
+        } else if (def.key === "macd") {
+          const data = macdData(cs);
+          const hist = pc.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
+          hist.setData(data.hist);
+          const m = pc.addLineSeries({ color: "#4B90FF", lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
+          m.setData(data.macd);
+          const sig = pc.addLineSeries({ color: "#e8b34b", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+          sig.setData(data.signal);
+          pane.series = { hist, main: m, signal: sig };
+        } else if (def.key === "stoch") {
+          const data = stochData(cs);
+          const k = pc.addLineSeries({ color: "#4B90FF", lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
+          k.createPriceLine({ price: 80, color: "rgba(224,93,93,0.6)", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "80" });
+          k.createPriceLine({ price: 20, color: "rgba(63,178,127,0.6)", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "20" });
+          k.setData(data.k);
+          const d = pc.addLineSeries({ color: "#e05d5d", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+          d.setData(data.d);
+          pane.series = { main: k, d };
+        }
+        panesRef.current[def.key] = pane;
+        const syncTo = (dst) => (range) => {
+          if (syncingRef.current || !range) return;
+          syncingRef.current = true;
+          try { dst.timeScale().setVisibleLogicalRange(range); } catch { /* mid-teardown */ }
+          syncingRef.current = false;
+        };
+        chart.timeScale().subscribeVisibleLogicalRangeChange(syncTo(pc));
+        pc.timeScale().subscribeVisibleLogicalRangeChange(syncTo(chart));
+        const current = chart.timeScale().getVisibleLogicalRange();
+        if (current) { try { pc.timeScale().setVisibleLogicalRange(current); } catch { /* noop */ } }
+      } else if (!enabled && existing) {
+        try { existing.chart.remove(); } catch { /* gone */ }
+        delete panesRef.current[def.key];
+      }
     }
-  }, [indicators, theme]);
+    // The time axis lives on the bottom-most visible pane (or the main
+    // chart when no panes are open).
+    chart.timeScale().applyOptions({ visible: enabledPanes.length === 0 });
+    enabledPanes.forEach((def, i) => {
+      const pane = panesRef.current[def.key];
+      if (pane) pane.chart.timeScale().applyOptions({ visible: i === enabledPanes.length - 1 });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ind, theme]);
 
   // ── Data + drawn levels ──
   useEffect(() => {
@@ -342,9 +494,15 @@ export default function DeskChart({
       }
     }
 
-    if (ema20Ref.current) ema20Ref.current.setData(emaSeries(candles, 20));
-    if (ema50Ref.current) ema50Ref.current.setData(emaSeries(candles, 50));
-    if (rsiSeriesRef.current) rsiSeriesRef.current.setData(rsiSeries(candles));
+    const ov = overlayRefs.current;
+    if (ov.ema) { ov.ema[0].setData(emaSeries(candles, 20)); ov.ema[1].setData(emaSeries(candles, 50)); }
+    if (ov.sma) { ov.sma[0].setData(smaSeries(candles, 50)); ov.sma[1].setData(smaSeries(candles, 200)); }
+    if (ov.bb) { const b = bollingerSeries(candles); ov.bb[0].setData(b.upper); ov.bb[1].setData(b.mid); ov.bb[2].setData(b.lower); }
+    if (ov.vwap) { ov.vwap[0].setData(vwapSeries(candles)); }
+    const panes = panesRef.current;
+    if (panes.rsi) panes.rsi.series.main.setData(rsiSeries(candles));
+    if (panes.macd) { const d = macdData(candles); panes.macd.series.hist.setData(d.hist); panes.macd.series.main.setData(d.macd); panes.macd.series.signal.setData(d.signal); }
+    if (panes.stoch) { const d = stochData(candles); panes.stoch.series.main.setData(d.k); panes.stoch.series.d.setData(d.d); }
 
     if (fittedKeyRef.current !== chartKey) {
       fittedKeyRef.current = chartKey;
@@ -357,7 +515,7 @@ export default function DeskChart({
   const startDrag = (planId, handle) => (e) => {
     e.preventDefault();
     e.stopPropagation();
-    onSelectPlan?.(planId);
+    cbRef.current.onSelectPlan?.(planId);
     dragRef.current = { planId, handle };
     const move = (ev) => {
       const host = hostRef.current;
@@ -399,7 +557,7 @@ export default function DeskChart({
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       dragRef.current = null;
-      onPlansChange?.(plansRef.current);
+      cbRef.current.onPlansChange?.(plansRef.current);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -411,9 +569,6 @@ export default function DeskChart({
   const tsApi = chart ? chart.timeScale() : null;
   const geom = (p) => {
     if (!series || !tsApi) return null;
-    // A plan's times can fall outside the currently loaded candles (made
-    // on another timeframe/session) — clamp to the pane edges instead of
-    // dropping the box entirely.
     const paneW = hostRef.current?.clientWidth || 0;
     let x1 = tsApi.timeToCoordinate(p.t1);
     let x2 = tsApi.timeToCoordinate(p.t2);
@@ -434,21 +589,17 @@ export default function DeskChart({
   const rr = riskDist > 0 ? rewardDist / riskDist : 0;
   const riskAmt = active ? (sizeNotional || 0) * (riskDist / active.entry) : 0;
   const rewardAmt = active ? (sizeNotional || 0) * (rewardDist / active.entry) : 0;
+  const visiblePanes = PANE_DEFS.filter((d) => ind[d.key]);
 
   return (
     <div className="desk-lw-wrap">
       <div ref={hostRef} className="desk-lw-chart" />
-      {indicators.rsi && (
-        <div className="desk-rsi">
-          <span className="desk-rsi-label">RSI 14</span>
-          <div ref={rsiHostRef} className="desk-rsi-chart" />
+      {visiblePanes.map((def) => (
+        <div key={def.key} className="desk-pane">
+          <span className="desk-pane-label">{def.label}</span>
+          <div ref={(el) => { paneHostRefs.current[def.key] = el; }} className="desk-pane-chart" />
         </div>
-      )}
-
-      <div className="desk-ind-chips">
-        <button className={indicators.ema ? "active" : ""} onClick={() => setIndicators((s) => ({ ...s, ema: !s.ema }))} title="EMA 20 (blue) and EMA 50 (gold) overlays">EMA</button>
-        <button className={indicators.rsi ? "active" : ""} onClick={() => setIndicators((s) => ({ ...s, rsi: !s.rsi }))} title="RSI 14 pane">RSI</button>
-      </div>
+      ))}
 
       {toolMode !== "off" && (
         <div className="desk-tool-hint">
@@ -468,7 +619,7 @@ export default function DeskChart({
             <div
               className="desk-strip entry"
               style={{ left: g.x, top: g.yE - 7, width: g.w }}
-              onPointerDown={isActive ? startDrag(p.id, "entry") : () => onSelectPlan?.(p.id)}
+              onPointerDown={isActive ? startDrag(p.id, "entry") : () => cbRef.current.onSelectPlan?.(p.id)}
             >
               <span className="desk-strip-tag">
                 {isLong ? "LONG" : "SHORT"} {fmtPx(p.entry)}{p.status === "armed" ? ` · ${ORDER_LABEL[p.orderType] || "ARMED"}` : p.status === "filled" ? " · OPEN" : ""}
@@ -494,7 +645,7 @@ export default function DeskChart({
           <div className="desk-tool-title">
             <span className={`demo-dir ${active.direction}`}>{active.direction === "buy" ? "LONG" : "SHORT"}</span>
             <strong>RR 1:{rr ? rr.toFixed(1) : "—"}</strong>
-            <button className="desk-tool-x" onClick={() => onRemovePlan?.(active.id)} aria-label="Remove plan">✕</button>
+            <button className="desk-tool-x" onClick={() => cbRef.current.onRemovePlan?.(active.id)} aria-label="Remove plan">✕</button>
           </div>
           <div className="desk-tool-rows">
             <span>Entry <b>{fmtPx(active.entry)}</b></span>
@@ -516,12 +667,12 @@ export default function DeskChart({
           </div>
           {notice && <div className="desk-tool-notice">{notice}</div>}
           {active.status === "draft" && (
-            <button className="desk-tool-trade" onClick={() => onTrade?.(active)}>
+            <button className="desk-tool-trade" onClick={() => cbRef.current.onTrade?.(active)}>
               {activeKind === "market" ? "Trade this position" : `Place ${ORDER_LABEL[activeKind]}`}
             </button>
           )}
           {active.status === "armed" && (
-            <button className="desk-tool-trade cancel" onClick={() => onCancelOrder?.(active)}>
+            <button className="desk-tool-trade cancel" onClick={() => cbRef.current.onCancelOrder?.(active)}>
               Cancel order
             </button>
           )}

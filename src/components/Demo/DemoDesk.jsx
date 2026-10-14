@@ -13,6 +13,16 @@ import {
 } from "../../config/demo";
 import DeskChat from "./DeskChat";
 import DeskChart, { orderKindFor, ORDER_LABEL } from "./DeskChart";
+
+const INDICATOR_DEFS = [
+  { key: "ema", label: "EMA 20 / 50", note: "overlay" },
+  { key: "sma", label: "SMA 50 / 200", note: "overlay" },
+  { key: "bb", label: "Bollinger Bands", note: "20 · 2σ" },
+  { key: "vwap", label: "VWAP", note: "daily reset" },
+  { key: "rsi", label: "RSI 14", note: "pane" },
+  { key: "macd", label: "MACD", note: "12 · 26 · 9" },
+  { key: "stoch", label: "Stochastic", note: "14 · 3" },
+];
 import SentimentGauge from "./SentimentGauge";
 import { MessageCircle, ChevronUp, ChevronDown } from "lucide-react";
 
@@ -75,6 +85,15 @@ export default function DemoDesk() {
   const autoFillRef = useRef(true);
   const [ticketError, setTicketError] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
+  const [indicators, setIndicators] = useState(() => {
+    try { return { ema: true, sma: false, bb: false, vwap: false, rsi: true, macd: false, stoch: false, ...JSON.parse(localStorage.getItem("wallie_desk_indicators") || "{}") }; }
+    catch { return { ema: true, sma: false, bb: false, vwap: false, rsi: true, macd: false, stoch: false }; }
+  });
+  const [indOpen, setIndOpen] = useState(false);
+  useEffect(() => {
+    try { localStorage.setItem("wallie_desk_indicators", JSON.stringify(indicators)); } catch { /* ignore */ }
+  }, [indicators]);
+  const toggleIndicator = (key) => setIndicators((prev) => ({ ...prev, [key]: !prev[key] }));
   const [railOpen, setRailOpen] = useState({ ticket: true, orders: true, positions: true, sentiment: true });
   const toggleRail = (key) => setRailOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   const collapsedByChatRef = useRef(false);
@@ -839,6 +858,30 @@ export default function DemoDesk() {
                   <button className={toolMode === "short" ? "active tool-short" : ""} onClick={() => setToolMode(toolMode === "short" ? "off" : "short")}>Short</button>
                 </div>
               )}
+              {chartEngine === "wallie" && (
+                <div className="demo-ind-dd">
+                  <button className={`demo-ind-btn ${indOpen ? "open" : ""}`} onClick={() => setIndOpen(!indOpen)}>
+                    Indicators
+                    <span className="demo-ind-count">{Object.values(indicators).filter(Boolean).length}</span>
+                    <ChevronDown size={14} />
+                  </button>
+                  {indOpen && (
+                    <>
+                      <div className="demo-ind-backdrop" onClick={() => setIndOpen(false)} />
+                      <div className="demo-ind-menu">
+                        {INDICATOR_DEFS.map((d) => (
+                          <label key={d.key} className="demo-ind-row">
+                            <input type="checkbox" checked={!!indicators[d.key]} onChange={() => toggleIndicator(d.key)} />
+                            <span className="demo-ind-name">{d.label}</span>
+                            <span className="demo-ind-note">{d.note}</span>
+                          </label>
+                        ))}
+                        <p className="demo-ind-foot">Computed by Wallie from the same candles. VWAP needs volume — unavailable on crypto feeds.</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="demo-ivpills">
                 <button className={chartEngine === "wallie" ? "active" : ""} onClick={() => { setChartEngine("wallie"); localStorage.setItem("wallie_desk_chart", "wallie"); }}>Wallie chart</button>
                 <button className={chartEngine === "tv" ? "active" : ""} onClick={() => { setChartEngine("tv"); localStorage.setItem("wallie_desk_chart", "tv"); }}>TradingView</button>
@@ -889,6 +932,7 @@ export default function DemoDesk() {
                 onCancelOrder={handleCancelOrder}
                 onRemovePlan={handleRemovePlan}
                 notice={toolNotice}
+                indicators={indicators}
               />
             ) : (
               <div className="demo-chart-loading">Loading chart data…</div>

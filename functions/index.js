@@ -440,6 +440,7 @@ async function fetchRawSeries(source, intervalCode) {
         highs: data.map((d) => d[2]),
         lows: data.map((d) => d[3]),
         closes: data.map((d) => d[4]),
+        volumes: data.map(() => null), // CoinGecko OHLC carries no volume
       };
     }
     const [range, iv] = YAHOO_RANGE[intervalCode] || YAHOO_RANGE.D;
@@ -451,19 +452,19 @@ async function fetchRawSeries(source, intervalCode) {
     const q = result?.indicators?.quote?.[0];
     if (!result || !q || !Array.isArray(result.timestamp)) return null;
     let rows = result.timestamp
-      .map((t, i) => ({ t: t * 1000, o: q.open?.[i], h: q.high?.[i], l: q.low?.[i], c: q.close?.[i] }))
+      .map((t, i) => ({ t: t * 1000, o: q.open?.[i], h: q.high?.[i], l: q.low?.[i], c: q.close?.[i], v: q.volume?.[i] ?? null }))
       .filter((r) => r.o != null && r.h != null && r.l != null && r.c != null);
     if (intervalCode === "240") {
       const agg = [];
       for (let i = 0; i < rows.length; i += 4) {
         const g = rows.slice(i, i + 4);
         if (g.length === 0) continue;
-        agg.push({ t: g[0].t, o: g[0].o, h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)), c: g[g.length - 1].c });
+        agg.push({ t: g[0].t, o: g[0].o, h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)), c: g[g.length - 1].c, v: g.reduce((s, x) => s + (x.v || 0), 0) });
       }
       rows = agg;
     }
     if (rows.length < 30) return null;
-    return { ts: rows.map((r) => r.t), opens: rows.map((r) => r.o), highs: rows.map((r) => r.h), lows: rows.map((r) => r.l), closes: rows.map((r) => r.c) };
+    return { ts: rows.map((r) => r.t), opens: rows.map((r) => r.o), highs: rows.map((r) => r.h), lows: rows.map((r) => r.l), closes: rows.map((r) => r.c), volumes: rows.map((r) => r.v) };
   } catch (err) {
     console.error("fetchRawSeries error:", err.message);
     return null;
@@ -490,9 +491,11 @@ function levelsFromSeries(series) {
   if (count < 30) return null;
   // Candles for the desk's own chart — same visible window as the levels,
   // so drawn lines always sit exactly on the candles they came from.
+  const volumes = series.volumes ? series.volumes.slice(start) : [];
   const candles = closes.map((c, i) => ({
     time: Math.floor(series.ts[start + i] / 1000),
     open: opens[i], high: highs[i], low: lows[i], close: c,
+    ...(volumes[i] != null ? { volume: volumes[i] } : {}),
   }));
   const price = closes[count - 1];
   const drawings = [];
