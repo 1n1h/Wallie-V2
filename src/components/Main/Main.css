@@ -555,8 +555,8 @@
 }
 
 .markdown-content {
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: 17px;
+  line-height: 1.7;
   color: var(--color-text-primary);
   padding-bottom: 30px;
 }
@@ -895,7 +895,7 @@
 }
 
 .markdown-content p {
-  margin-bottom: 1em;
+  margin-bottom: 1.1em;
 }
 
 .markdown-content strong {
@@ -910,12 +910,12 @@
 
 .markdown-content ul,
 .markdown-content ol {
-  margin: 1em 0;
+  margin: 1.1em 0;
   padding-left: 2em;
 }
 
 .markdown-content li {
-  margin: 0.5em 0;
+  margin: 0.55em 0;
 }
 
 .markdown-content h1,
@@ -923,9 +923,14 @@
 .markdown-content h3,
 .markdown-content h4 {
   color: var(--color-text-primary);
-  margin: 1em 0 0.5em;
+  margin: 1.1em 0 0.55em;
   letter-spacing: -0.02em;
 }
+
+.markdown-content h1 { font-size: 1.4em; }
+.markdown-content h2 { font-size: 1.25em; }
+.markdown-content h3 { font-size: 1.12em; }
+.markdown-content h4 { font-size: 1em; }
 
 /* ===== Trade Signal Box (blockquote) ===== */
 .markdown-content blockquote {
@@ -1069,11 +1074,11 @@ img.listening {
   }
 
   .markdown-content {
-    font-size: 14px;
+    font-size: 16px;
   }
 
   .result-data p {
-    font-size: 14px;
+    font-size: 16px;
   }
 
   .bottom-info {
@@ -1213,12 +1218,12 @@ img.listening {
   }
 
   .markdown-content {
-    font-size: 13.5px;
+    font-size: 16px;
   }
 
   .result-data p {
-    font-size: 13.5px;
-    line-height: 1.6;
+    font-size: 16px;
+    line-height: 1.7;
   }
 
   .profile-dropdown {
