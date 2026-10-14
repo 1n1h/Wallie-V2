@@ -25,8 +25,15 @@ export async function initTTS() {
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
-    const hasWebGPU = typeof navigator !== "undefined" && navigator.gpu;
-    if (hasWebGPU) {
+    // Only attempt WebGPU when an adapter actually exists. Registering a
+    // doomed webgpu backend can poison the ONNX backend list and take the
+    // WASM backend down with it — the failure reads "no available backend
+    // found. ERR: [webgpu] Error: Failed to get adapter…".
+    let adapter = null;
+    if (typeof navigator !== "undefined" && navigator.gpu) {
+      try { adapter = await navigator.gpu.requestAdapter(); } catch { adapter = null; }
+    }
+    if (adapter) {
       try {
         const instance = await KokoroTTS.from_pretrained(MODEL_ID, {
           dtype: "fp32",
@@ -38,12 +45,24 @@ export async function initTTS() {
         console.warn("WebGPU init failed, falling back to WASM:", e);
       }
     }
-    const instance = await KokoroTTS.from_pretrained(MODEL_ID, {
-      dtype: "q8",
-      device: "wasm",
-    });
-    console.log("Kokoro TTS: using WASM");
-    return instance;
+    try {
+      const instance = await KokoroTTS.from_pretrained(MODEL_ID, {
+        dtype: "q8",
+        device: "wasm",
+      });
+      console.log("Kokoro TTS: using WASM");
+      return instance;
+    } catch (e) {
+      // One clean retry — a transient CDN/wasm fetch hiccup shouldn't
+      // cost the user the studio voice for the whole session.
+      console.warn("WASM init failed once, retrying:", e);
+      const instance = await KokoroTTS.from_pretrained(MODEL_ID, {
+        dtype: "q8",
+        device: "wasm",
+      });
+      console.log("Kokoro TTS: using WASM (retry)");
+      return instance;
+    }
   })();
 
   try {

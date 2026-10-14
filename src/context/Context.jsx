@@ -229,7 +229,7 @@ const ContextProvider = (props) => {
       setSpeechLoading(false);
       // Surface WHY the studio voice failed, right in the notice — turns
       // every tap into a diagnosis instead of a silent console log.
-      const why = error?.message ? ` (${String(error.message).slice(0, 60)})` : "";
+      const why = error?.message ? ` (${String(error.message).slice(0, 130)})` : "";
       const started = speakWithDeviceVoice(clean, {
         onEnd: () => setIsSpeaking(false),
         onError: () => {
