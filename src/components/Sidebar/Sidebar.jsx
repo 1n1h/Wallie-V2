@@ -38,6 +38,18 @@ const Sidebar = ({ mobileOpen, onClose }) => {
   const [tip, setTip] = useState(null);
   const tipTimer = useRef(null);
 
+  // The demo desk's docked chat asks the sidebar to tuck away for room.
+  useEffect(() => {
+    const collapse = () => setCollapsed(true);
+    const restore = () => setCollapsed(false);
+    window.addEventListener("wallie:sidebar-collapse", collapse);
+    window.addEventListener("wallie:sidebar-restore", restore);
+    return () => {
+      window.removeEventListener("wallie:sidebar-collapse", collapse);
+      window.removeEventListener("wallie:sidebar-restore", restore);
+    };
+  }, []);
+
   useEffect(() => {
     const onDocClick = (e) => {
       if (

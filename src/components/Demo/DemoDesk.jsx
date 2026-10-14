@@ -74,6 +74,19 @@ export default function DemoDesk() {
   const autoFillRef = useRef(true);
   const [ticketError, setTicketError] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
+  const collapsedByChatRef = useRef(false);
+
+  // Docked chat needs room on desktop: tuck the app sidebar away while
+  // the chat is open, and put it back when the chat closes.
+  useEffect(() => {
+    if (chatOpen && typeof window !== "undefined" && window.innerWidth >= 1280) {
+      collapsedByChatRef.current = true;
+      window.dispatchEvent(new CustomEvent("wallie:sidebar-collapse"));
+    } else if (!chatOpen && collapsedByChatRef.current) {
+      collapsedByChatRef.current = false;
+      window.dispatchEvent(new CustomEvent("wallie:sidebar-restore"));
+    }
+  }, [chatOpen]);
   const [chartEngine, setChartEngine] = useState(() => localStorage.getItem("wallie_desk_chart") || "wallie");
   const [actionLog, setActionLog] = useState([]);
   const [toolMode, setToolMode] = useState("off");
@@ -768,6 +781,7 @@ export default function DemoDesk() {
   }
 
   return (
+    <div className={`demo-shell ${chatOpen ? "chat-open" : ""}`}>
     <div className="demo-wrap">
       {/* Account strip */}
       <div className="demo-strip demo-card">
@@ -1010,30 +1024,38 @@ export default function DemoDesk() {
         </div>
       </div>
 
+    </div>
+
+    {!chatOpen && (
       <button className="demo-ask" onClick={() => setChatOpen(true)}>
         <MessageCircle size={18} /> Ask Wallie
       </button>
-      <DeskChat
-        open={chatOpen}
-        onClose={() => setChatOpen(false)}
-        deskContext={deskContext}
-        actionLog={actionLog}
-        chipCtx={(() => {
-          const hlines = (levels?.drawings || []).filter((d) => d.type === "hline");
-          const mid = pxSel?.mid ?? levels?.currentPrice ?? null;
-          const resAbove = hlines.filter((d) => d.tone === "resistance" && (mid == null || d.price > mid)).map((d) => d.price).sort((a, b) => a - b)[0];
-          const supBelow = hlines.filter((d) => d.tone === "support" && (mid == null || d.price < mid)).map((d) => d.price).sort((a, b) => b - a)[0];
-          const alertLevel = resAbove ?? supBelow ?? null;
-          return {
-            symbol,
-            interval,
-            hasPosOnSymbol: positions.some((p) => p.symbol === symbol),
-            nearestRes: alertLevel != null ? fmtPx(alertLevel) : null,
-            alertLevel,
-          };
-        })()}
-        onQuickWatch={quickWatch}
-      />
+    )}
+    {chatOpen && (
+      <div className="demo-chatdock">
+        <DeskChat
+          open={chatOpen}
+          onClose={() => setChatOpen(false)}
+          deskContext={deskContext}
+          actionLog={actionLog}
+          chipCtx={(() => {
+            const hlines = (levels?.drawings || []).filter((d) => d.type === "hline");
+            const mid = pxSel?.mid ?? levels?.currentPrice ?? null;
+            const resAbove = hlines.filter((d) => d.tone === "resistance" && (mid == null || d.price > mid)).map((d) => d.price).sort((a, b) => a - b)[0];
+            const supBelow = hlines.filter((d) => d.tone === "support" && (mid == null || d.price < mid)).map((d) => d.price).sort((a, b) => b - a)[0];
+            const alertLevel = resAbove ?? supBelow ?? null;
+            return {
+              symbol,
+              interval,
+              hasPosOnSymbol: positions.some((p) => p.symbol === symbol),
+              nearestRes: alertLevel != null ? fmtPx(alertLevel) : null,
+              alertLevel,
+            };
+          })()}
+          onQuickWatch={quickWatch}
+        />
+      </div>
+    )}
     </div>
   );
 }
