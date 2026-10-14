@@ -2058,3 +2058,11 @@ img.listening {
   background: transparent; color: inherit;
 }
 .chart-lvl-toggle:hover { border-color: #006ced; color: #4b90ff; }
+
+/* Sentiment card (chat): the TradingView gauge inside a chart-card frame */
+.sentiment-card-body {
+  height: 400px; border-radius: 12px; overflow: hidden;
+  background: #2a2724;
+}
+[data-theme="light"] .sentiment-card-body { background: #f8f3e6; }
+.sentiment-card-body .tradingview-widget-container { height: 100%; width: 100%; }

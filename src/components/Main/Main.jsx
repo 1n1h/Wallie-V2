@@ -9,6 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import { Compass, TrendingUp, BookOpen, BarChart3, HandCoins, Eye, Bell, Plus, GraduationCap, Check } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
+import SentimentGauge from "../Demo/SentimentGauge";
 
 const GREETINGS = [
   "Hello,", "Welcome back,", "Howdy,", "Hey there,", "Good to see you,",
@@ -163,6 +164,30 @@ const ChartCard = ({ chart }) => {
             {showLevels ? "Hide levels" : "Show levels"}
           </button>
         )}
+      </figcaption>
+    </figure>
+  );
+};
+
+// Sentiment card: TradingView's live technical-analysis gauge (the same
+// component the Demo Desk rail uses) shown inside a chat reply whenever
+// the user asks for a symbol's market sentiment.
+const SENTIMENT_TV_INTERVAL = { "1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", D: "1D", W: "1W", M: "1M" };
+const SentimentCard = ({ sentiment }) => {
+  const theme = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  return (
+    <figure className="chart-card sentiment-card">
+      <div className="sentiment-card-body">
+        <SentimentGauge
+          tvSymbol={sentiment.tvSymbol}
+          interval={SENTIMENT_TV_INTERVAL[sentiment.interval] || "1D"}
+          theme={theme}
+        />
+      </div>
+      <figcaption className="chart-card-cap">
+        <span className="plot-caption">
+          {sentiment.symbol} · market sentiment by TradingView — oscillators + moving averages
+        </span>
       </figcaption>
     </figure>
   );
@@ -753,6 +778,7 @@ const Main = ({ onMenuClick }) => {
                         })()}
                         {message.plot && <PlotFigure plot={message.plot} />}
                         {message.chart && <ChartCard chart={message.chart} />}
+                        {message.sentiment && <SentimentCard sentiment={message.sentiment} />}
                         <div className={`markdown-content ${showCursor ? "streaming-cursor" : ""}`}>
                           <ReactMarkdown>{message.message.replace(/^\s*VERDICT:\s*(BULLISH|BEARISH|NEUTRAL)\s+\d{1,3}\s*%.*$/im, "").trim()}</ReactMarkdown>
                         </div>

@@ -320,6 +320,7 @@ const ContextProvider = (props) => {
       const aiPlot = res.plot ? { image: newUserMsg.image, drawings: res.plot.drawings || [] } : null;
       const aiActions = res.actions || null;
       const aiChart = res.chart || null;
+      const aiSentiment = res.sentiment || null;
       const aiDesk = res.desk || null;
       setLoading(false);
 
@@ -333,6 +334,7 @@ const ContextProvider = (props) => {
         plot: aiPlot,
         actions: aiActions,
         chart: aiChart,
+        sentiment: aiSentiment,
         desk: aiDesk,
         chatId: currentChatId
       };
@@ -366,7 +368,7 @@ const ContextProvider = (props) => {
           setStreamingText("");
 
           // Final update with complete message
-          const finalHistory = [...updatedHistory, { type: 'ai', message: response, plot: aiPlot, actions: aiActions, chart: aiChart, desk: aiDesk, chatId: currentChatId }];
+          const finalHistory = [...updatedHistory, { type: 'ai', message: response, plot: aiPlot, actions: aiActions, chart: aiChart, sentiment: aiSentiment, desk: aiDesk, chatId: currentChatId }];
           setChatHistory(finalHistory);
           saveCurrentChat(finalHistory);
           setResultData(response);

@@ -399,6 +399,52 @@ function detectChartRequest(prompt) {
   return { symbol: display, tvSymbol, interval };
 }
 
+// Sentiment requests ("market sentiment on Tesla") — the chat shows
+// TradingView's live technical-analysis gauge for the symbol, so the
+// reply only needs a short lean, not an essay. Symbol resolution mirrors
+// detectChartRequest, plus company names via STOCK_ALIASES.
+function detectSentimentRequest(prompt) {
+  if (typeof prompt !== "string" || !prompt.trim()) return null;
+  if (!/\bsentiment\b/i.test(prompt)) return null;
+  const upper = prompt.toUpperCase();
+  let tvSymbol = null;
+  let display = null;
+  if (upper.includes("S&P")) { tvSymbol = "TVC:SPX"; display = "SPX500"; }
+  if (!tvSymbol) {
+    const tokens = upper.split(/[^A-Z0-9]+/).filter(Boolean);
+    for (const tok of tokens) {
+      if (CHART_TV_MAP[tok]) { tvSymbol = CHART_TV_MAP[tok]; display = tok; break; }
+    }
+  }
+  if (!tvSymbol) {
+    // Bare tickers that only exist as alias values (TSLA, AAPL, NVDA…)
+    const aliasValues = new Set(Object.values(STOCK_ALIASES).map((v) => String(v).toUpperCase()));
+    const tokens = upper.split(/[^A-Z0-9]+/).filter(Boolean);
+    for (const tok of tokens) {
+      if (aliasValues.has(tok)) { display = tok; tvSymbol = `NASDAQ:${tok}`; break; }
+    }
+  }
+  if (!tvSymbol) {
+    const lowerTokens = prompt.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    for (const tok of lowerTokens) {
+      const alias = STOCK_ALIASES[tok];
+      if (alias) {
+        display = alias.toUpperCase();
+        tvSymbol = CHART_TV_MAP[display] || `NASDAQ:${display}`;
+        break;
+      }
+    }
+  }
+  if (!tvSymbol) {
+    const dollar = /\$([A-Za-z]{1,5})\b/.exec(prompt);
+    if (dollar) { tvSymbol = `NASDAQ:${dollar[1].toUpperCase()}`; display = dollar[1].toUpperCase(); }
+  }
+  if (!tvSymbol) return null;
+  let interval = "D";
+  for (const [re, code] of CHART_INTERVALS) { if (re.test(prompt)) { interval = code; break; } }
+  return { symbol: display, tvSymbol, interval };
+}
+
 // ─── Drawn levels for chart cards ───
 // Support/resistance + trendlines computed from REAL OHLCV data (Yahoo for
 // stocks/indexes/forex, CoinGecko for crypto), so the lines drawn on a
@@ -1414,6 +1460,14 @@ exports.chat = onCall(
         }
       }
 
+      // Sentiment gauge: "sentiment on TSLA" shows TradingView's live
+      // technical-analysis gauge in the reply — text stays a short lean.
+      const sentimentReq = !hasImage && !signalMode && !deskMode ? detectSentimentRequest(prompt) : null;
+      if (sentimentReq) {
+        finalSystemPrompt += `\n\nSENTIMENT DISPLAY: A live sentiment gauge for ${sentimentReq.symbol} (TradingView's technical analysis summary — oscillators including RSI and MACD, plus moving averages, Strong Sell to Strong Buy) is displayed to the user below your text. Text rules: state the lean in ONE short line, then at most 3 short supporting points (today's price action from any data provided, one news driver, the nearest level if provided). Under ~70 words total. NEVER say RSI, MACD or any indicator is "not available" — the gauge below shows them live. NEVER narrate what you could do ("I can pull up...") — the gauge is already on screen.`;
+        console.log(`Sentiment gauge attached: ${sentimentReq.tvSymbol} (${sentimentReq.interval})`);
+      }
+
       const messages = [{ role: "system", content: finalSystemPrompt }];
 
       // Conversation history with image context notes
@@ -1585,6 +1639,7 @@ exports.chat = onCall(
         if (showcaseActions) out.actions = showcaseActions;
         console.log("Showcase chart + chips attached");
       }
+      if (sentimentReq) out.sentiment = sentimentReq;
       if (deskActions) out.deskActions = deskActions;
       return out;
     } catch (error) {
