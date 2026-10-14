@@ -219,6 +219,9 @@ const ContextProvider = (props) => {
     } catch (error) {
       console.error("Error in speech (studio voice), falling back to device voice:", error);
       setSpeechLoading(false);
+      // Surface WHY the studio voice failed, right in the notice — turns
+      // every tap into a diagnosis instead of a silent console log.
+      const why = error?.message ? ` (${String(error.message).slice(0, 60)})` : "";
       const started = speakWithDeviceVoice(clean, {
         onEnd: () => setIsSpeaking(false),
         onError: () => {
@@ -227,7 +230,7 @@ const ContextProvider = (props) => {
         },
       });
       if (started) {
-        showTtsNotice("Studio voice couldn't load — using your device's voice.");
+        showTtsNotice(`Studio voice couldn't load${why} — using your device's voice.`);
       } else {
         setIsSpeaking(false);
         showTtsNotice("Voice isn't available on this device.");
