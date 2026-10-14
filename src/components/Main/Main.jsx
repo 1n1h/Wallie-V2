@@ -226,6 +226,8 @@ const Main = ({ onMenuClick }) => {
     setShowResult,
     isStreaming,
     isSpeaking: ctxIsSpeaking,
+    speechLoading: ctxSpeechLoading,
+    ttsNotice: ctxTtsNotice,
     handleTextToSpeech: ctxHandleTextToSpeech,
     stopSpeaking: ctxStopSpeaking,
     // Subscription & usage
@@ -374,6 +376,8 @@ const Main = ({ onMenuClick }) => {
   const handleTextToSpeech = ctxHandleTextToSpeech;
   const stopSpeaking = ctxStopSpeaking;
   const isSpeaking = ctxIsSpeaking;
+  const speechLoading = ctxSpeechLoading;
+  const ttsNotice = ctxTtsNotice;
 
   const handleLogout = async () => {
     setIsProfileOpen(false);
@@ -672,6 +676,7 @@ const Main = ({ onMenuClick }) => {
 
   return (
     <div className="main">
+      {ttsNotice && <div className="tts-toast" role="status">{ttsNotice}</div>}
       <div className="nav">
         {onMenuClick && (
           <button className="mobile-menu-btn" onClick={onMenuClick}>
@@ -788,9 +793,13 @@ const Main = ({ onMenuClick }) => {
                             <button
                               className={`control-btn ${isSpeaking ? "active" : ""}`}
                               onClick={() => isSpeaking ? stopSpeaking() : handleTextToSpeech(message.message)}
-                              title={isSpeaking ? "Stop Speaking" : "Play Response"}
+                              title={speechLoading ? "Loading voice…" : isSpeaking ? "Stop Speaking" : "Play Response"}
                             >
-                              {isSpeaking ? (
+                              {speechLoading ? (
+                                <svg className="tts-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                  <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+                                </svg>
+                              ) : isSpeaking ? (
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                                   <rect x="6" y="6" width="12" height="12" rx="2"/>
                                 </svg>

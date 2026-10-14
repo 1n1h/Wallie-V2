@@ -1,5 +1,10 @@
 import { KokoroTTS } from "kokoro-js";
 
+// Wallie's voice: Kokoro (in-browser AI voice) is the studio voice. If it
+// fails for ANY reason — model download, WebGPU/WASM, memory — the caller
+// falls back to the device's built-in voice (speakWithDeviceVoice below),
+// which always makes sound. Failures must never be silent again.
+
 let ttsInstance = null;
 let loadingPromise = null;
 
@@ -41,13 +46,112 @@ export async function initTTS() {
     return instance;
   })();
 
-  ttsInstance = await loadingPromise;
-  loadingPromise = null;
-  return ttsInstance;
+  try {
+    ttsInstance = await loadingPromise;
+    loadingPromise = null;
+    return ttsInstance;
+  } catch (e) {
+    // Never cache a failed load — the old code kept the rejected promise
+    // forever, so one transient failure killed the voice for the whole
+    // session. Clear it so the next tap retries cleanly.
+    loadingPromise = null;
+    throw e;
+  }
 }
 
 export async function textToSpeech(text, voiceId = "am_adam") {
   const tts = await initTTS();
   const audio = await tts.generate(text, { voice: voiceId });
   return audio.toBlob();
+}
+
+export function withTimeout(promise, ms, label = "Operation") {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
+// Strip markdown so the voice doesn't read asterisks and hashes aloud.
+export function cleanTextForSpeech(text) {
+  return String(text || "")
+    .replace(/^\s*VERDICT:.*$/im, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_#`>]+/g, "")
+    .replace(/^\s*[-•]\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// ── Device voice fallback (built-in speechSynthesis, male voice) ──
+const MALE_HINTS =
+  /(^|\b)(male|david|guy|christopher|eric|brian|matthew|justin|joey|ryan|daniel|george|james|john|michael|alex|fred|thomas|aaron|arthur)\b/i;
+const FEMALE_HINTS =
+  /(female|zira|samantha|victoria|karen|susan|linda|heather|fiona|moira|tessa|allison|ava|joanna|salli|kimberly|kendra|amy|emma|nicole|jenny|aria|michelle|catherine|elizabeth|jessica|google us english)/i;
+
+function pickMaleVoice() {
+  const voices = window.speechSynthesis.getVoices();
+  const en = voices.filter((v) => /^en/i.test(v.lang));
+  return (
+    en.find((v) => MALE_HINTS.test(v.name)) ||
+    en.find((v) => !FEMALE_HINTS.test(v.name)) ||
+    en[0] ||
+    voices[0] ||
+    null
+  );
+}
+
+let deviceSession = 0;
+
+export function stopDeviceVoice() {
+  deviceSession++;
+  if ("speechSynthesis" in window) {
+    try { window.speechSynthesis.cancel(); } catch { /* noop */ }
+  }
+}
+
+// Speaks with the device's own voice (always male-picked). Long replies
+// are chunked by sentence — some browsers cut off long utterances.
+export function speakWithDeviceVoice(text, { onEnd, onError } = {}) {
+  if (!("speechSynthesis" in window) || !text) return false;
+  const session = ++deviceSession;
+  const chunks =
+    text.match(/[^.!?]+[.!?]+["']?\s*|[^.!?]+$/g)?.map((c) => c.trim()).filter(Boolean) || [text];
+
+  const start = () => {
+    if (session !== deviceSession) return;
+    try { window.speechSynthesis.cancel(); } catch { /* noop */ }
+    let idx = 0;
+    const speakNext = () => {
+      if (session !== deviceSession) return;
+      if (idx >= chunks.length) { onEnd?.(); return; }
+      const u = new SpeechSynthesisUtterance(chunks[idx++]);
+      const voice = pickMaleVoice();
+      if (voice) u.voice = voice;
+      u.rate = 1.0;
+      u.pitch = 0.85; // deepen — reads male even on a neutral voice
+      u.onend = speakNext;
+      u.onerror = (e) => {
+        if (e.error === "canceled" || e.error === "interrupted") return;
+        if (session === deviceSession) onError?.(e);
+      };
+      window.speechSynthesis.speak(u);
+    };
+    speakNext();
+  };
+
+  if (window.speechSynthesis.getVoices().length) {
+    start();
+  } else {
+    // Voices often arrive async; wait briefly, then speak regardless.
+    const fallback = setTimeout(start, 600);
+    window.speechSynthesis.onvoiceschanged = () => {
+      clearTimeout(fallback);
+      window.speechSynthesis.onvoiceschanged = null;
+      start();
+    };
+  }
+  return true;
 }

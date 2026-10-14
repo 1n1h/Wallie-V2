@@ -1,6 +1,6 @@
 import { createContext, useState, useRef, useEffect } from "react";
 import runChat from "../config/gemini";
-import { textToSpeech } from "../config/tts";
+import { textToSpeech, speakWithDeviceVoice, stopDeviceVoice, cleanTextForSpeech, withTimeout } from "../config/tts";
 import { useAuth } from "./AuthContext";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
@@ -21,6 +21,8 @@ const ContextProvider = (props) => {
   const [resultData, setResultData] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechLoading, setSpeechLoading] = useState(false);
+  const [ttsNotice, setTtsNotice] = useState(null);
   const [selectedModel, setSelectedModel] = useState("wallie-1");
   const [chatHistory, setChatHistory] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(Date.now());
@@ -182,23 +184,50 @@ const ContextProvider = (props) => {
     }, 10);
   };
 
+  const showTtsNotice = (msg) => {
+    setTtsNotice(msg);
+    setTimeout(() => setTtsNotice(null), 6000);
+  };
+
   const handleTextToSpeech = async (text) => {
     if (userSettings.ttsEnabled === false) return;
+    stopSpeaking();
+    const clean = cleanTextForSpeech(text);
+    if (!clean) return;
+    setIsSpeaking(true);
+    setSpeechLoading(true);
     try {
-      setIsSpeaking(true);
-      const blob = await textToSpeech(text, userSettings.voiceId || "am_adam");
+      // Studio voice (Kokoro). A hung or failed model load must not spin
+      // forever — 45s cap, then the device voice takes over.
+      const blob = await withTimeout(
+        textToSpeech(clean, userSettings.voiceId || "am_adam"),
+        45000,
+        "Voice model"
+      );
       const url = URL.createObjectURL(blob);
-
       audioRef.current.src = url;
       await audioRef.current.play();
-
+      setSpeechLoading(false);
       audioRef.current.onended = () => {
         setIsSpeaking(false);
         URL.revokeObjectURL(url);
       };
     } catch (error) {
-      console.error("Error in speech:", error);
-      setIsSpeaking(false);
+      console.error("Error in speech (studio voice), falling back to device voice:", error);
+      setSpeechLoading(false);
+      const started = speakWithDeviceVoice(clean, {
+        onEnd: () => setIsSpeaking(false),
+        onError: () => {
+          setIsSpeaking(false);
+          showTtsNotice("Voice isn't available right now — please try again.");
+        },
+      });
+      if (started) {
+        showTtsNotice("Studio voice couldn't load — using your device's voice.");
+      } else {
+        setIsSpeaking(false);
+        showTtsNotice("Voice isn't available on this device.");
+      }
     }
   };
 
@@ -206,8 +235,10 @@ const ContextProvider = (props) => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
-      setIsSpeaking(false);
     }
+    stopDeviceVoice();
+    setSpeechLoading(false);
+    setIsSpeaking(false);
   };
 
   const newChat = () => {
@@ -419,6 +450,8 @@ const ContextProvider = (props) => {
     setSelectedImage,
     handleImageUpload,
     isSpeaking,
+    speechLoading,
+    ttsNotice,
     handleTextToSpeech,
     stopSpeaking,
     onSent,

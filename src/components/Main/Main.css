@@ -2059,6 +2059,25 @@ img.listening {
 }
 .chart-lvl-toggle:hover { border-color: #006ced; color: #4b90ff; }
 
+/* Voice (TTS) feedback: loading spinner on the play button + notice toast */
+.tts-spin { animation: ttsSpin 0.9s linear infinite; }
+@keyframes ttsSpin { to { transform: rotate(360deg); } }
+.tts-toast {
+  position: fixed; left: 50%; bottom: 108px; transform: translateX(-50%);
+  z-index: 95; max-width: min(92vw, 480px);
+  background: #2e2a26; color: #f1ede4;
+  border: 1px solid rgba(233, 225, 207, 0.16);
+  font-size: 13px; font-weight: 600; line-height: 1.4;
+  padding: 10px 16px; border-radius: 999px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  animation: ttsToastIn 0.25s ease both;
+}
+[data-theme="light"] .tts-toast { background: #fcfaf4; color: #26221c; border-color: rgba(90, 78, 60, 0.2); }
+@keyframes ttsToastIn {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
 /* Sentiment card (chat): the TradingView gauge inside a chart-card frame */
 .sentiment-card-body {
   height: 400px; border-radius: 12px; overflow: hidden;
