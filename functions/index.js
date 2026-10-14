@@ -983,6 +983,7 @@ Then a short **Rationale** (3-5 bullets) explaining the confluence â€” whic
 PERSONALITY GUIDELINES
 -----------------------
 - Keep responses concise but warm. Don't write essays.
+- Format for skimmers: short lines, bold lead-ins, lists over paragraphs. Never send a wall of text when a list or a visual would say it better.
 - Use analogies when they help, but don't force them.
 - If someone is clearly new, be patient and explain more.
 - If someone is experienced, be direct and skip the basics.
@@ -1371,6 +1372,48 @@ exports.chat = onCall(
         }
       }
 
+      // Capability showcase: "what can you do" gets SHOWN, not told — a
+      // live GOLD chart with drawn levels rides along as a working
+      // example, plus ready-made action chips under the reply.
+      let showcaseReq = null;
+      let showcaseActions = null;
+      if (!hasImage && !signalMode && !deskMode && !chartReq && !wantsPlot) {
+        const asksCaps = /(what can you do|what do you do|who are you|what are you|how can you help|what can you help|what can wallie do|what does wallie do|show me what you can do|your (features|abilities|capabilities)|things you can do)/.test(prompt.toLowerCase());
+        if (asksCaps) {
+          showcaseReq = { symbol: "GOLD", tvSymbol: CHART_TV_MAP.GOLD, interval: "D", example: true };
+          finalSystemPrompt += `\n\nCAPABILITY SHOWCASE: The user asked what you can do. Show, don't tell. A live GOLD chart with your support/resistance levels drawn is displayed below your text as a working example of your chart markup. Format rules: open with ONE short line. Then a tight list of at most 6 items — each starts with a bold label followed by at most ~8 words (e.g. **Read charts** — upload one and I'll mark it up). Point at the example once, in one short line. End with ONE line offering concrete next steps: upload a chart, pull up a market, or open the Demo Desk. Total under 110 words. NO explanatory paragraphs, NO essay.`;
+          try {
+            const levels = await Promise.race([
+              computeChartLevels(showcaseReq),
+              new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+            ]);
+            if (levels && levels.drawings.length) {
+              showcaseReq.levels = levels;
+              const lvText = levels.drawings.filter((d) => d.type === "hline").map((d) => d.label).join(" · ");
+              if (lvText) {
+                finalSystemPrompt += `\n\nDRAWN LEVELS on the example chart: ${lvText}. You may cite the nearest level as proof of the markup.`;
+              }
+              const res = levels.drawings.find((d) => d.type === "hline" && d.tone === "resistance");
+              showcaseActions = [
+                ...(res ? [{ kind: "watch", label: `Watch GOLD at ${fmtLevelPrice(res.price)}`, symbol: "GOLD", level: res.price, when: null, topic: null }] : []),
+                { kind: "watchlist", label: "Add GOLD to my watchlist", symbol: "GOLD", level: null, when: null, topic: null },
+                { kind: "teach", label: "Teach me support & resistance", symbol: null, level: null, when: null, topic: "support and resistance" },
+                { kind: "remind", label: "Remind me at the open", symbol: "GOLD", level: null, when: "open", topic: null },
+              ].slice(0, 4);
+            }
+          } catch (err) {
+            console.error("Showcase levels error:", err.message);
+          }
+          if (!showcaseActions) {
+            showcaseActions = [
+              { kind: "watchlist", label: "Add GOLD to my watchlist", symbol: "GOLD", level: null, when: null, topic: null },
+              { kind: "teach", label: "Teach me support & resistance", symbol: null, level: null, when: null, topic: "support and resistance" },
+            ];
+          }
+          console.log("Capability showcase attached: GOLD (D)");
+        }
+      }
+
       const messages = [{ role: "system", content: finalSystemPrompt }];
 
       // Conversation history with image context notes
@@ -1536,6 +1579,11 @@ exports.chat = onCall(
       if (chartReq) {
         out.chart = chartReq;
         console.log(`Chart card attached: ${chartReq.tvSymbol} (${chartReq.interval})`);
+      }
+      if (showcaseReq) {
+        out.chart = showcaseReq;
+        if (showcaseActions) out.actions = showcaseActions;
+        console.log("Showcase chart + chips attached");
       }
       if (deskActions) out.deskActions = deskActions;
       return out;

@@ -156,7 +156,7 @@ const ChartCard = ({ chart }) => {
       </div>
       <figcaption className="chart-card-cap">
         <span className="plot-caption">
-          {chart.symbol} · live chart by TradingView{levels ? " · Wallie's levels, drawn from real market data" : ""}
+          {chart.example ? `Live example — ${chart.symbol} marked up by Wallie` : `${chart.symbol} · live chart by TradingView`}{levels ? " · Wallie's levels, drawn from real market data" : ""}
         </span>
         {levels && (
           <button className="chart-lvl-toggle" onClick={() => setShowLevels(!showLevels)}>
