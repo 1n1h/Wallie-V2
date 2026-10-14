@@ -355,6 +355,10 @@ const CHART_TV_MAP = {
   EURUSD: "FX:EURUSD", GBPUSD: "FX:GBPUSD", USDJPY: "FX:USDJPY", AUDUSD: "FX:AUDUSD", USDCAD: "FX:USDCAD", USDCHF: "FX:USDCHF",
   OIL: "TVC:USOIL", WTI: "TVC:USOIL", USOIL: "TVC:USOIL",
   SPY: "AMEX:SPY",
+  US500: "TVC:SPX", DXY: "TVC:DXY", VIX: "TVC:VIX", UK100: "TVC:UKX", GER40: "TVC:DE40", JPN225: "TVC:NI225",
+  GBPJPY: "FX:GBPJPY", EURGBP: "FX:EURGBP", EURJPY: "FX:EURJPY", GBPCHF: "FX:GBPCHF",
+  ADA: "COINBASE:ADAUSD", LTC: "COINBASE:LTCUSD", LINK: "COINBASE:LINKUSD",
+  BNB: "BINANCE:BNBUSDT", AVAX: "COINBASE:AVAXUSD",
 };
 const CHART_INTERVALS = [
   [/\bmonthly\b|\b1\s?mo\b/i, "M"],
@@ -369,8 +373,10 @@ const CHART_INTERVALS = [
 ];
 function detectChartRequest(prompt) {
   if (typeof prompt !== "string" || !prompt.trim()) return null;
+  // Broad intent set: a mapped symbol token is ALSO required below, so
+  // everyday phrasings ("let me see gold", "what's US30 doing") are safe.
   const intent =
-    /\b(chart|graph|mock[-\s]?up|show me|pull up|display|bring up|draw)\b/i.test(prompt) ||
+    /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse)\b/i.test(prompt) ||
     /^\s*(us30|nas100|spx500|gold|xauusd|btc|eth|eurusd|gbpusd|sol)\s*(chart)?\s*(please)?\s*$/i.test(prompt);
   if (!intent) return null;
   const upper = prompt.toUpperCase();
@@ -391,6 +397,19 @@ function detectChartRequest(prompt) {
   let interval = "D";
   for (const [re, code] of CHART_INTERVALS) { if (re.test(prompt)) { interval = code; break; } }
   return { symbol: display, tvSymbol, interval };
+}
+
+// Which half of the chart test failed (symbol vs intent) — for log diagnosis
+function chartMissReason(prompt) {
+  if (typeof prompt !== "string" || !prompt.trim()) return null;
+  const upper = prompt.toUpperCase();
+  const tokens = upper.split(/[^A-Z0-9]+/).filter(Boolean);
+  const symbolHit = upper.includes("S&P") || tokens.some((t) => CHART_TV_MAP[t]) || /\$[A-Za-z]{1,5}\b/.test(prompt);
+  const intentHit =
+    /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse)\b/i.test(prompt) ||
+    /^\s*(us30|nas100|spx500|gold|xauusd|btc|eth|eurusd|gbpusd|sol)\s*(chart)?\s*(please)?\s*$/i.test(prompt);
+  if (symbolHit === intentHit) return null; // both or neither — not a near miss
+  return symbolHit ? "symbol-no-intent" : "intent-no-symbol";
 }
 
 // Detect the primary ticker from prompt + pageContext (for TA enrichment)
@@ -1147,8 +1166,12 @@ exports.chat = onCall(
       // Inline chart card: "show me a chart of US30" (text only — image
       // requests already carry the user's own chart).
       const chartReq = !hasImage && !signalMode ? detectChartRequest(prompt) : null;
+      if (!chartReq && !hasImage && !signalMode) {
+        const miss = chartMissReason(prompt);
+        if (miss) console.log(`Chart near-miss: ${miss}`);
+      }
       if (chartReq) {
-        finalSystemPrompt += `\n\nCHART DISPLAY: A live interactive ${chartReq.symbol} chart is being displayed to the user inside this reply, below your text. Refer to it naturally in one or two short sentences (e.g. "here's ${chartReq.symbol} live") and point out what to look at — trend direction, structure, the nearest level from the market data above if any was provided. Do NOT invent exact live prices that were not provided to you. Keep it brief: the chart is the point.`;
+        finalSystemPrompt += `\n\nCHART DISPLAY: A live interactive ${chartReq.symbol} chart is being displayed to the user inside this reply, below your text. You DO have the ability to show charts in this app — never say you can't display or pull up a chart. Refer to it naturally in one or two short sentences (e.g. "here's ${chartReq.symbol} live") and point out what to look at — trend direction, structure, the nearest level from the market data above if any was provided. Do NOT invent exact live prices that were not provided to you. Keep it brief: the chart is the point.`;
       }
 
       const messages = [{ role: "system", content: finalSystemPrompt }];
