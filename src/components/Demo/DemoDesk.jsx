@@ -32,7 +32,7 @@ const executedDeskActions = new Set();
 import "./DemoDesk.css";
 
 // ─── Demo Desk ───
-// Paper trading on live markets, FTMO-style: pick a balance + leverage,
+// Paper trading on live markets, prop-firm style: pick a balance + leverage,
 // trade the live chart, and every closed trade is written to the journal
 // automatically (demoTrades). Demo funds only — nothing touches a broker.
 const TONES = {
@@ -772,7 +772,7 @@ export default function DemoDesk() {
         <div className="demo-setup demo-card">
           <h2>Open your demo account</h2>
           <p className="demo-sub">
-            Practice trading on live markets with demo funds — FTMO-style. Nothing here touches a real
+            Practice trading on live markets with demo funds — prop-firm style. Nothing here touches a real
             broker, and every trade you close is written to your journal automatically.
           </p>
           <label className="demo-flabel">Starting balance</label>

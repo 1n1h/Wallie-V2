@@ -379,7 +379,7 @@ function detectChartRequest(prompt) {
     /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse|support|resistance|levels)\b/i.test(prompt) ||
     /^\s*(us30|nas100|spx500|gold|xauusd|btc|eth|eurusd|gbpusd|sol)\s*(chart)?\s*(please)?\s*$/i.test(prompt);
   if (!intent) return null;
-  const upper = prompt.toUpperCase();
+  const upper = prompt.toUpperCase().replace(/([A-Z]{3})\s*\/\s*([A-Z]{3})/g, "$1$2");
   let tvSymbol = null;
   let display = null;
   if (upper.includes("S&P")) { tvSymbol = "TVC:SPX"; display = "SPX500"; }
@@ -387,6 +387,8 @@ function detectChartRequest(prompt) {
     const tokens = upper.split(/[^A-Z0-9]+/).filter(Boolean);
     for (const tok of tokens) {
       if (CHART_TV_MAP[tok]) { tvSymbol = CHART_TV_MAP[tok]; display = tok; break; }
+      const bare = tok.replace(/USD$/, "");
+      if (bare !== tok && CHART_TV_MAP[bare]) { tvSymbol = CHART_TV_MAP[bare]; display = tok; break; }
     }
   }
   if (!tvSymbol) {
@@ -406,7 +408,7 @@ function detectChartRequest(prompt) {
 function detectSentimentRequest(prompt) {
   if (typeof prompt !== "string" || !prompt.trim()) return null;
   if (!/\bsentiment\b/i.test(prompt)) return null;
-  const upper = prompt.toUpperCase();
+  const upper = prompt.toUpperCase().replace(/([A-Z]{3})\s*\/\s*([A-Z]{3})/g, "$1$2");
   let tvSymbol = null;
   let display = null;
   if (upper.includes("S&P")) { tvSymbol = "TVC:SPX"; display = "SPX500"; }
@@ -414,6 +416,8 @@ function detectSentimentRequest(prompt) {
     const tokens = upper.split(/[^A-Z0-9]+/).filter(Boolean);
     for (const tok of tokens) {
       if (CHART_TV_MAP[tok]) { tvSymbol = CHART_TV_MAP[tok]; display = tok; break; }
+      const bare = tok.replace(/USD$/, "");
+      if (bare !== tok && CHART_TV_MAP[bare]) { tvSymbol = CHART_TV_MAP[bare]; display = tok; break; }
     }
   }
   if (!tvSymbol) {
@@ -592,7 +596,7 @@ async function computeChartLevels(chartReq) {
 // Which half of the chart test failed (symbol vs intent) — for log diagnosis
 function chartMissReason(prompt) {
   if (typeof prompt !== "string" || !prompt.trim()) return null;
-  const upper = prompt.toUpperCase();
+  const upper = prompt.toUpperCase().replace(/([A-Z]{3})\s*\/\s*([A-Z]{3})/g, "$1$2");
   const tokens = upper.split(/[^A-Z0-9]+/).filter(Boolean);
   const symbolHit = upper.includes("S&P") || tokens.some((t) => CHART_TV_MAP[t]) || /\$[A-Za-z]{1,5}\b/.test(prompt);
   const intentHit =
