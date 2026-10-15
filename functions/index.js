@@ -1325,6 +1325,7 @@ exports.chat = onCall(
       let priceData = null;
       let newsData = null;
 
+      let taTicker = null;
       if (needsTA) {
         let primaryTicker = detectPrimaryTicker(prompt, pageContext);
         if (!primaryTicker && Array.isArray(history)) {
@@ -1338,6 +1339,7 @@ exports.chat = onCall(
             if (primaryTicker) break;
           }
         }
+        taTicker = primaryTicker;
         if (primaryTicker) {
           try {
             if (primaryTicker.type === "crypto") {
@@ -1410,6 +1412,7 @@ exports.chat = onCall(
       // Inline chart card: "show me a chart of US30" (text only — image
       // requests already carry the user's own chart).
       const chartReq = !hasImage && !signalMode ? detectChartRequest(prompt) : null;
+      let chartActions = null;
       if (!chartReq && !hasImage && !signalMode) {
         const miss = chartMissReason(prompt);
         if (miss) console.log(`Chart near-miss: ${miss}`);
@@ -1427,6 +1430,13 @@ exports.chat = onCall(
           if (levels && levels.drawings.length) {
             chartReq.levels = levels;
             console.log(`Chart levels computed: ${levels.drawings.length} drawings for ${chartReq.tvSymbol}`);
+            const cSup = levels.drawings.filter((d) => d.type === "hline" && d.tone === "support").sort((a, b) => b.price - a.price)[0];
+            const cRes = levels.drawings.filter((d) => d.type === "hline" && d.tone === "resistance").sort((a, b) => a.price - b.price)[0];
+            chartActions = [
+              ...(cSup ? [{ kind: "watch", label: `Watch ${chartReq.symbol} support ${fmtLevelPrice(cSup.price)}`, symbol: chartReq.symbol, level: cSup.price, when: null, topic: null }] : []),
+              ...(cRes ? [{ kind: "watch", label: `Watch ${chartReq.symbol} resistance ${fmtLevelPrice(cRes.price)}`, symbol: chartReq.symbol, level: cRes.price, when: null, topic: null }] : []),
+              { kind: "teach", label: `Teach me the ${chartReq.symbol} setup`, symbol: null, level: null, when: null, topic: `${chartReq.symbol} trade setup` },
+            ].slice(0, 3);
             const lvText = levels.drawings.filter((d) => d.type === "hline").map((d) => d.label).join(" · ");
             if (lvText) {
               finalSystemPrompt += `\n\nDRAWN LEVELS: The chart shown to the user has these lines drawn on it, computed from real market data: ${lvText}${levels.drawings.some((d) => d.type === "trend") ? " · plus a trendline" : ""}. Cite these exact prices when you mention support and resistance — they are the same lines the user is looking at.`;
@@ -1485,6 +1495,48 @@ exports.chat = onCall(
       if (sentimentReq) {
         finalSystemPrompt += `\n\nSENTIMENT DISPLAY: A live sentiment gauge for ${sentimentReq.symbol} (TradingView's technical analysis summary — oscillators including RSI and MACD, plus moving averages, Strong Sell to Strong Buy) is displayed to the user below your text. Text rules: state the lean in ONE short line, then at most 3 short supporting points (today's price action from any data provided, one news driver, the nearest level if provided). Under ~70 words total. NEVER say RSI, MACD or any indicator is "not available" — the gauge below shows them live. NEVER narrate what you could do ("I can pull up...") — the gauge is already on screen.`;
         console.log(`Sentiment gauge attached: ${sentimentReq.tvSymbol} (${sentimentReq.interval})`);
+      }
+
+      // Signal grounding (2026-10-15): a TA/signal ask on a resolved
+      // symbol also carries that symbol's REAL drawn levels (the same
+      // computation behind chart cards) plus ready-made follow-up
+      // actions, and the chart rides along with the reply. The model
+      // cites these numbers, never memory.
+      let signalChart = null;
+      let signalActions = null;
+      if (needsTA && taTicker && !hasImage && !signalMode && !deskMode && !chartReq && !showcaseReq && !sentimentReq) {
+        const disp = String(taTicker.display || "").toUpperCase();
+        const chartSym = CHART_TV_MAP[disp] ? disp : disp === "GC=F" ? "GOLD" : disp === "SI=F" ? "SILVER" : disp === "CL=F" ? "USOIL" : disp === "^DJI" ? "US30" : disp === "^IXIC" ? "NAS100" : disp === "^GSPC" ? "SPX500" : null;
+        if (chartSym) {
+          try {
+            const sReq = { symbol: chartSym, tvSymbol: CHART_TV_MAP[chartSym], interval: "D" };
+            const lv = await Promise.race([
+              computeChartLevels(sReq),
+              new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+            ]);
+            if (lv && lv.drawings && lv.drawings.length) {
+              sReq.levels = lv;
+              signalChart = sReq;
+              const lvText = lv.drawings.filter((d) => d.type === "hline").map((d) => d.label).join(" · ");
+              if (lvText) {
+                finalSystemPrompt += `\n\nDRAWN LEVELS for ${chartSym}: ${lvText}. These are computed from real market data and drawn on the chart attached to this reply. If you give a signal or quote support/resistance, your entry, stop, and target MUST be built from these prices and the technical data above — never from memory.`;
+              }
+              const sSup = lv.drawings.filter((d) => d.type === "hline" && d.tone === "support").sort((a, b) => b.price - a.price)[0];
+              const sRes = lv.drawings.filter((d) => d.type === "hline" && d.tone === "resistance").sort((a, b) => a.price - b.price)[0];
+              signalActions = [
+                ...(sSup ? [{ kind: "watch", label: `Watch ${chartSym} support ${fmtLevelPrice(sSup.price)}`, symbol: chartSym, level: sSup.price, when: null, topic: null }] : []),
+                ...(sRes ? [{ kind: "watch", label: `Watch ${chartSym} resistance ${fmtLevelPrice(sRes.price)}`, symbol: chartSym, level: sRes.price, when: null, topic: null }] : []),
+                { kind: "teach", label: `Teach me the ${chartSym} setup`, symbol: null, level: null, when: null, topic: `${chartSym} trade setup` },
+              ].slice(0, 3);
+              console.log(`Signal grounding attached: ${chartSym}`);
+            }
+          } catch (err) {
+            console.error("Signal grounding error:", err.message);
+          }
+        }
+      }
+      if (needsTA && !taData && !signalChart) {
+        finalSystemPrompt += `\n\nFINAL GROUNDING RULE: No live data is attached to this reply. Do NOT produce a signal (no PAIR / BIAS / ENTRY / STOP / TAKE PROFIT block) and do NOT quote any price, level, RSI, MACD, or percentage. Reply briefly: say you could not pull live data for this one, and offer to pull up the chart or try again.`;
       }
 
       const messages = [{ role: "system", content: finalSystemPrompt }];
@@ -1651,12 +1703,18 @@ exports.chat = onCall(
       if (plotActions) out.actions = plotActions;
       if (chartReq) {
         out.chart = chartReq;
+        if (chartActions) out.actions = chartActions;
         console.log(`Chart card attached: ${chartReq.tvSymbol} (${chartReq.interval})`);
       }
       if (showcaseReq) {
         out.chart = showcaseReq;
         if (showcaseActions) out.actions = showcaseActions;
         console.log("Showcase chart + chips attached");
+      }
+      if (signalChart && !out.chart) {
+        out.chart = signalChart;
+        if (signalActions && !out.actions) out.actions = signalActions;
+        console.log(`Signal chart attached: ${signalChart.tvSymbol}`);
       }
       if (sentimentReq) out.sentiment = sentimentReq;
       if (deskActions) out.deskActions = deskActions;
