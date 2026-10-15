@@ -1326,7 +1326,18 @@ exports.chat = onCall(
       let newsData = null;
 
       if (needsTA) {
-        const primaryTicker = detectPrimaryTicker(prompt, pageContext);
+        let primaryTicker = detectPrimaryTicker(prompt, pageContext);
+        if (!primaryTicker && Array.isArray(history)) {
+          // Follow-ups ("give me a signal") rarely repeat the symbol.
+          // Recover it from the most recent history message that names
+          // one, so the TA below is grounded in the right market.
+          for (let i = history.length - 1; i >= 0 && i >= history.length - 10; i--) {
+            const htxt = history[i] && typeof history[i].text === "string" ? history[i].text : "";
+            if (!htxt) continue;
+            primaryTicker = detectPrimaryTicker(htxt, null);
+            if (primaryTicker) break;
+          }
+        }
         if (primaryTicker) {
           try {
             if (primaryTicker.type === "crypto") {
@@ -1365,6 +1376,10 @@ exports.chat = onCall(
 
       if (taData) {
         finalSystemPrompt += `\n-----------------------\nTECHNICAL ANALYSIS DATA (computed from real market data â€” use ONLY these numbers)\n-----------------------\n${taData}\n\nIMPORTANT: Ground your analysis in this data. Do NOT invent price levels, RSI values, or support/resistance that aren't listed above. If you're giving a signal, entry/SL/TP must be based on these levels.\n`;
+      }
+
+      if (needsTA && !taData) {
+        finalSystemPrompt += `\n\nNO LIVE DATA: No technical data could be attached to this reply. You do NOT have current prices, levels, or indicator values for this request. NEVER state specific prices, support/resistance levels, RSI/MACD values, or percentages from memory; they will be stale and wrong. If it is not clear which symbol the user means, ask which one. If the symbol is clear but the data failed to load, say you could not pull live data just now and offer what you CAN do (pull up the chart, explain how to read the setup) without quoting numbers.\n`;
       }
 
       if (priceData) {
