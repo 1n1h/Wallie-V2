@@ -361,6 +361,12 @@ const CHART_TV_MAP = {
   BNB: "BINANCE:BNBUSDT", AVAX: "COINBASE:AVAXUSD",
 };
 const CHART_INTERVALS = [
+  [/\b15[\s-]?min(ute)?s?\b/i, "15"],
+  [/\b5[\s-]?min(ute)?s?\b/i, "5"],
+  [/\b30[\s-]?min(ute)?s?\b/i, "30"],
+  [/\b1[\s-]?min(ute)?s?\b/i, "1"],
+  [/\b4[\s-]?hours?\b/i, "240"],
+  [/\b1[\s-]?hours?\b/i, "60"],
   [/\bmonthly\b|\b1\s?mo\b/i, "M"],
   [/\bweekly\b|\b1\s?w\b/i, "W"],
   [/\b15\s?m\b|\bfifteen minute\b/i, "15"],
@@ -376,7 +382,7 @@ function detectChartRequest(prompt) {
   // Broad intent set: a mapped symbol token is ALSO required below, so
   // everyday phrasings ("let me see gold", "what's US30 doing") are safe.
   const intent =
-    /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse|support|resistance|levels)\b/i.test(prompt) ||
+    /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse|support|resistance|levels|go to|switch|timeframe|tf)\b/i.test(prompt) ||
     /^\s*(us30|nas100|spx500|gold|xauusd|btc|eth|eurusd|gbpusd|sol)\s*(chart)?\s*(please)?\s*$/i.test(prompt);
   if (!intent) return null;
   const upper = prompt.toUpperCase().replace(/([A-Z]{3})\s*\/\s*([A-Z]{3})/g, "$1$2");
@@ -600,10 +606,89 @@ function chartMissReason(prompt) {
   const tokens = upper.split(/[^A-Z0-9]+/).filter(Boolean);
   const symbolHit = upper.includes("S&P") || tokens.some((t) => CHART_TV_MAP[t]) || /\$[A-Za-z]{1,5}\b/.test(prompt);
   const intentHit =
-    /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse|support|resistance|levels)\b/i.test(prompt) ||
+    /\b(chart|graph|mock[-\s]?up|show|display|pull up|pull|bring up|open|load|see|view|look|looking|looks|watch|check|give me|doing|draw|analyze|analyse|support|resistance|levels|go to|switch|timeframe|tf)\b/i.test(prompt) ||
     /^\s*(us30|nas100|spx500|gold|xauusd|btc|eth|eurusd|gbpusd|sol)\s*(chart)?\s*(please)?\s*$/i.test(prompt);
   if (symbolHit === intentHit) return null; // both or neither — not a near miss
   return symbolHit ? "symbol-no-intent" : "intent-no-symbol";
+}
+
+// Parse a timeframe code out of free text ("15 min tf", "1-hour").
+function parseInterval(text) {
+  if (typeof text !== "string") return null;
+  for (const [re, code] of CHART_INTERVALS) {
+    if (re.test(text)) return code;
+  }
+  return null;
+}
+
+const INTERVAL_NAMES = { "1": "1-minute", "5": "5-minute", "15": "15-minute", "30": "30-minute", "60": "1-hour", "240": "4-hour", D: "daily", W: "weekly", M: "monthly" };
+
+// Chart symbol for a resolved TA ticker, whichever path resolved it.
+function chartSymbolFor(tk) {
+  if (!tk) return null;
+  const disp = String(tk.display || "").toUpperCase();
+  if (CHART_TV_MAP[disp]) return { symbol: disp, tvSymbol: CHART_TV_MAP[disp] };
+  const mapped = disp === "GC=F" ? "GOLD" : disp === "SI=F" ? "SILVER" : disp === "CL=F" ? "USOIL" : disp === "^DJI" ? "US30" : disp === "^IXIC" ? "NAS100" : disp === "^GSPC" ? "SPX500" : null;
+  if (mapped) return { symbol: mapped, tvSymbol: CHART_TV_MAP[mapped] };
+  if (/^[A-Z]{1,5}$/.test(disp)) return { symbol: disp, tvSymbol: `NASDAQ:${disp}` };
+  return null;
+}
+
+// A chart follow-up that names only a timeframe ("go to the 15 min
+// tf") resolves its symbol from the user's own earlier chart ask.
+function resolveContextChart(prompt, history) {
+  const interval = parseInterval(prompt);
+  if (!Array.isArray(history)) return null;
+  for (let i = history.length - 1; i >= 0 && i >= history.length - 10; i--) {
+    const h = history[i];
+    if (!h || h.role !== "user" || typeof h.text !== "string") continue;
+    const r = detectChartRequest(h.text);
+    if (r) return { symbol: r.symbol, tvSymbol: r.tvSymbol, interval: interval || r.interval || "D" };
+  }
+  return null;
+}
+
+// Intent router: a small structured model call that UNDERSTANDS the
+// message with conversation context, instead of keyword matching.
+// Returns { kind, symbol, interval } or null. Symbols are validated
+// against the known maps afterwards — the router can never invent one.
+async function classifyIntent(prompt, history, apiKey) {
+  try {
+    const recent = (Array.isArray(history) ? history.slice(-6) : [])
+      .map((h) => `${h && h.role === "user" ? "User" : "Wallie"}: ${String((h && h.text) || "").slice(0, 200)}`)
+      .join("\n");
+    const system =
+      "You route messages for a trading education assistant. Read the conversation and the new message, and decide what the user is asking for, in their own words, however they phrase it. Reply with ONLY a JSON object: {\"kind\": ..., \"symbol\": ..., \"interval\": ...}. " +
+      "kind is one of: \"chart\" (they want to see, pull up, or switch a chart or timeframe), \"analysis\" (they ask about a market's indicators, levels, trend, or price action — RSI, MACD, moving averages, support/resistance, what price is doing), \"signal\" (they want a trade signal or setup), \"sentiment\" (they ask about market sentiment), \"none\" (anything else, including lessons and general questions). " +
+      "symbol is the market they mean, resolved from context when they say 'it', 'this', or only name a timeframe — an uppercase code like GOLD, BTC, EURUSD, US30, AAPL — or null when no market is meant. " +
+      "interval is one of \"1\", \"5\", \"15\", \"30\", \"60\", \"240\", \"D\", \"W\" when they name or imply a timeframe (including from context), else null.";
+    const messages = [
+      { role: "system", content: system },
+      { role: "user", content: `Conversation:\n${recent || "(new conversation)"}\n\nNew message: ${prompt}` },
+    ];
+    const data = await Promise.race([
+      callTogetherAI(messages, apiKey, { model: TEXT_MODEL, maxTokens: 120, temperature: 0.1 }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("intent timeout")), 4500)),
+    ]);
+    const text = data?.choices?.[0]?.message?.content || "";
+    const m = /\{[\s\S]*\}/.exec(text);
+    if (!m) return null;
+    const j = JSON.parse(m[0]);
+    if (!["chart", "analysis", "signal", "sentiment", "none"].includes(j.kind)) return null;
+    let symbol = null;
+    if (typeof j.symbol === "string" && j.symbol.trim()) {
+      const up = j.symbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const bare = up.replace(/USD$/, "");
+      if (CHART_TV_MAP[up]) symbol = up;
+      else if (bare !== up && CHART_TV_MAP[bare]) symbol = bare;
+      else if (STOCK_ALIASES[up.toLowerCase()]) symbol = up;
+      else if (/^[A-Z]{1,5}$/.test(up)) symbol = up;
+    }
+    const interval = ["1", "5", "15", "30", "60", "240", "D", "W", "M"].includes(String(j.interval)) ? String(j.interval) : null;
+    return { kind: j.kind, symbol, interval };
+  } catch (e) {
+    return null;
+  }
 }
 
 // Detect the primary ticker from prompt + pageContext (for TA enrichment)
@@ -1321,12 +1406,41 @@ exports.chat = onCall(
       );
 
       // â”€â”€â”€ Fetch data â”€â”€â”€
+      // Understanding layer: deterministic hits first; when they
+      // miss, an intent-router call reads the message WITH context,
+      // so free-form asks ("go to the 15 min tf", "what's the RSI
+      // at") resolve a symbol and timeframe the way a person would.
+      let intent = null;
+      let intentChart = null;
+      let wantTA = needsTA;
+      const promptInterval = parseInterval(prompt);
+      if (!signalMode && !hasImage && !isCasual && !(typeof userPersona === "string" && userPersona.includes("[[DESK_MODE]]"))) {
+        const detChart0 = detectChartRequest(prompt);
+        const detSent0 = detectSentimentRequest(prompt);
+        if (!detChart0 && promptInterval) {
+          intentChart = resolveContextChart(prompt, history);
+          if (intentChart) intent = { kind: "chart", symbol: intentChart.symbol, interval: intentChart.interval };
+        }
+        if (!intent && !detChart0 && !detSent0) {
+          intent = await classifyIntent(prompt, history, apiKey);
+          if (intent) console.log(`Intent: ${intent.kind} ${intent.symbol || "-"} @ ${intent.interval || "-"}`);
+        }
+        if (intent && intent.kind === "chart" && !detChart0 && !intentChart) {
+          if (intent.symbol) {
+            intentChart = { symbol: intent.symbol, tvSymbol: CHART_TV_MAP[intent.symbol] || `NASDAQ:${intent.symbol}`, interval: intent.interval || promptInterval || "D" };
+          } else if (intent.interval || promptInterval) {
+            intentChart = resolveContextChart(prompt, history);
+          }
+        }
+        if (intent && (intent.kind === "analysis" || intent.kind === "signal")) wantTA = true;
+      }
+
       let taData = null;
       let priceData = null;
       let newsData = null;
 
       let taTicker = null;
-      if (needsTA) {
+      if (wantTA) {
         let primaryTicker = detectPrimaryTicker(prompt, pageContext);
         if (!primaryTicker && Array.isArray(history)) {
           // Follow-ups ("give me a signal") rarely repeat the symbol.
@@ -1340,7 +1454,34 @@ exports.chat = onCall(
           }
         }
         taTicker = primaryTicker;
-        if (primaryTicker) {
+        if (!primaryTicker && intent && intent.symbol && (intent.kind === "analysis" || intent.kind === "signal")) {
+          const cs = chartDataSource({ symbol: intent.symbol });
+          primaryTicker = { type: cs.type, symbol: cs.symbol, coinId: cs.coinId, display: intent.symbol };
+          taTicker = primaryTicker;
+        }
+        // TA at the timeframe being discussed, computed from the same
+        // candle series the chart levels come from, so the indicator
+        // values and the drawn levels always agree.
+        const taInterval = (intent && intent.interval) || promptInterval || null;
+        if (primaryTicker && taInterval) {
+          const csym = chartSymbolFor(primaryTicker);
+          if (csym) {
+            try {
+              const series = await fetchRawSeries(chartDataSource({ symbol: csym.symbol }), taInterval);
+              if (series && series.closes.length >= 30) {
+                const ta = runFullTA(series.closes, series.highs, series.lows, series.volumes);
+                const formatted = formatTAForPrompt(`${csym.symbol} — ${INTERVAL_NAMES[taInterval] || taInterval} timeframe`, { ta });
+                if (formatted) {
+                  taData = formatted;
+                  console.log(`TA attached: ${csym.symbol} @ ${taInterval}`);
+                }
+              }
+            } catch (e) {
+              console.error("Series TA error:", e.message);
+            }
+          }
+        }
+        if (primaryTicker && !taData) {
           try {
             if (primaryTicker.type === "crypto") {
               const data = await fetchCryptoOHLCV(primaryTicker.coinId);
@@ -1411,7 +1552,7 @@ exports.chat = onCall(
 
       // Inline chart card: "show me a chart of US30" (text only — image
       // requests already carry the user's own chart).
-      const chartReq = !hasImage && !signalMode ? detectChartRequest(prompt) : null;
+      const chartReq = !hasImage && !signalMode ? detectChartRequest(prompt) || intentChart : null;
       let chartActions = null;
       if (!chartReq && !hasImage && !signalMode) {
         const miss = chartMissReason(prompt);
@@ -1504,12 +1645,13 @@ exports.chat = onCall(
       // cites these numbers, never memory.
       let signalChart = null;
       let signalActions = null;
-      if (needsTA && taTicker && !hasImage && !signalMode && !deskMode && !chartReq && !showcaseReq && !sentimentReq) {
+      if (wantTA && taTicker && !hasImage && !signalMode && !deskMode && !chartReq && !showcaseReq && !sentimentReq) {
         const disp = String(taTicker.display || "").toUpperCase();
-        const chartSym = CHART_TV_MAP[disp] ? disp : disp === "GC=F" ? "GOLD" : disp === "SI=F" ? "SILVER" : disp === "CL=F" ? "USOIL" : disp === "^DJI" ? "US30" : disp === "^IXIC" ? "NAS100" : disp === "^GSPC" ? "SPX500" : null;
+        let chartSym = CHART_TV_MAP[disp] ? disp : disp === "GC=F" ? "GOLD" : disp === "SI=F" ? "SILVER" : disp === "CL=F" ? "USOIL" : disp === "^DJI" ? "US30" : disp === "^IXIC" ? "NAS100" : disp === "^GSPC" ? "SPX500" : null;
+        if (!chartSym && /^[A-Z]{1,5}$/.test(disp)) chartSym = disp;
         if (chartSym) {
           try {
-            const sReq = { symbol: chartSym, tvSymbol: CHART_TV_MAP[chartSym], interval: "D" };
+            const sReq = { symbol: chartSym, tvSymbol: CHART_TV_MAP[chartSym] || `NASDAQ:${chartSym}`, interval: (intent && intent.interval) || promptInterval || "D" };
             const lv = await Promise.race([
               computeChartLevels(sReq),
               new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
@@ -1535,7 +1677,7 @@ exports.chat = onCall(
           }
         }
       }
-      if (needsTA && !taData && !signalChart) {
+      if ((wantTA || intentChart) && !taData && !signalChart && !(chartReq && chartReq.levels && chartReq.levels.drawings && chartReq.levels.drawings.length)) {
         finalSystemPrompt += `\n\nFINAL GROUNDING RULE: No live data is attached to this reply. Do NOT produce a signal (no PAIR / BIAS / ENTRY / STOP / TAKE PROFIT block) and do NOT quote any price, level, RSI, MACD, or percentage. Reply briefly: say you could not pull live data for this one, and offer to pull up the chart or try again.`;
       }
 
