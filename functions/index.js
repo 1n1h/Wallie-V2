@@ -12,6 +12,7 @@ const togetherKey = defineSecret("TOGETHER_API_KEY");
 const geminiKey = defineSecret("GEMINI_API_KEY");
 const metaKey = defineSecret("META_MODEL_API_KEY");
 const browserUseKey = defineSecret("BROWSER_USE_API_KEY");
+const scavioKey = defineSecret("SCAVIO_API_KEY");
 
 
 const TOGETHER_API_URL = "https://api.together.xyz/v1/chat/completions";
@@ -1697,6 +1698,54 @@ async function readLinkWithBrowser(link) {
   }
 }
 
+async function fetchScavioTranscript(link) {
+  try {
+    let key = "";
+    try { key = scavioKey.value().trim(); } catch (e) { key = ""; }
+    if (!key) return null;
+    const headers = { "Content-Type": "application/json", Authorization: "Bearer " + key };
+    let url = null;
+    let body = null;
+    if (link.platform === "YouTube") {
+      if (!link.id) return null;
+      url = "https://api.scavio.dev/api/v1/youtube/transcript";
+      body = JSON.stringify({ video_id: link.id, language: "en", format: "text" });
+    } else if (link.platform === "Instagram") {
+      if (!link.url) return null;
+      url = "https://api.scavio.dev/api/v1/instagram/post";
+      body = JSON.stringify({ url: link.url });
+    } else {
+      return null;
+    }
+    const timer = new Promise((resolve) => setTimeout(() => resolve(null), 30000));
+    const res = await Promise.race([fetch(url, { method: "POST", headers: headers, body: body }), timer]);
+    if (!res || !res.ok) return null;
+    const j = await res.json();
+    let text = "";
+    let minLen = 80;
+    if (link.platform === "YouTube") {
+      text = (j && j.data && j.data.content) || "";
+    } else {
+      minLen = 20;
+      let items = null;
+      if (j && j.data && Array.isArray(j.data.items)) items = j.data.items;
+      else if (j && Array.isArray(j.items)) items = j.items;
+      else if (j && Array.isArray(j.data)) items = j.data;
+      const item = items && items.length ? items[0] : null;
+      if (item) {
+        if (typeof item.caption === "string") text = item.caption;
+        else if (item.caption && typeof item.caption.text === "string") text = item.caption.text;
+        else if (typeof item.text === "string") text = item.text;
+      }
+    }
+    text = (text + "").replace(/\s+/g, " ").trim();
+    if (text.length < minLen) return null;
+    return text.slice(0, 12000);
+  } catch (e) {
+    return null;
+  }
+}
+
 async function readSharedLink(promptText) {
   try {
     const link = extractSharedLink(promptText);
@@ -1706,11 +1755,16 @@ async function readSharedLink(promptText) {
     if (link.platform === "YouTube" && link.id) {
       transcript = await fetchYouTubeTranscript(link.id);
     }
+    let scavioText = null;
+    if (!transcript && (link.platform === "YouTube" || link.platform === "TikTok" || link.platform === "Instagram")) {
+      scavioText = await fetchScavioTranscript(link);
+      if (scavioText) transcript = scavioText;
+    }
     let browserNotes = null;
     if (!transcript && (link.platform === "YouTube" || link.platform === "TikTok")) {
       browserNotes = await readLinkWithBrowser(link);
     }
-    console.log("SharedLink " + link.platform + " meta=" + (meta ? "y" : "n") + " transcript=" + (transcript ? transcript.length : 0) + " browser=" + (browserNotes ? browserNotes.length : 0));
+    console.log("SharedLink " + link.platform + " meta=" + (meta ? "y" : "n") + " transcript=" + (transcript ? transcript.length : 0) + " scavio=" + (scavioText ? scavioText.length : 0) + " browser=" + (browserNotes ? browserNotes.length : 0));
     return { link: link, meta: meta, transcript: transcript, browserNotes: browserNotes };
   } catch (e) {
     return null;
@@ -1718,7 +1772,7 @@ async function readSharedLink(promptText) {
 }
 // [/SharedLink helpers]
 exports.chat = onCall(
-  { secrets: [togetherKey, geminiKey, metaKey, browserUseKey], timeoutSeconds: 120, cors: true },
+  { secrets: [togetherKey, geminiKey, metaKey, browserUseKey, scavioKey], timeoutSeconds: 120, cors: true },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "You must be signed in to use Wallie.");
