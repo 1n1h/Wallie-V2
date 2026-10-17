@@ -482,9 +482,48 @@ function chartDataSource(chartReq) {
   return { type: "stock", symbol: display };
 }
 
+// --- Exchange-grade crypto candles (Kraken public REST) ---
+// CoinGecko's free OHLC is coarse (4-hour candles even when the
+// user asked for 15 minutes). Kraken's public OHLC endpoint — the
+// same source the CCXT library wraps — serves true 1m-1w candles
+// with real volume and needs no API key. Integrated directly
+// instead of the 70MB CCXT package: identical data, no cold-start
+// cost. CoinGecko stays as the fallback for unmapped pairs and
+// any Kraken failure.
+const KRAKEN_PAIRS = { bitcoin: "XBTUSD", ethereum: "ETHUSD", solana: "SOLUSD", ripple: "XRPUSD", dogecoin: "DOGEUSD", cardano: "ADAUSD", polkadot: "DOTUSD", "avalanche-2": "AVAXUSD", chainlink: "LINKUSD", "shiba-inu": "SHIBUSD", litecoin: "LTCUSD", uniswap: "UNIUSD", cosmos: "ATOMUSD", near: "NEARUSD", aptos: "APTUSD", arbitrum: "ARBUSD", optimism: "OPUSD", sui: "SUIUSD", pepe: "PEPEUSD" };
+const KRAKEN_INTERVALS = { "1": 1, "5": 5, "15": 15, "60": 60, "240": 240, D: 1440, W: 10080, M: 10080 };
+async function fetchKrakenSeries(coinId, intervalCode) {
+  const pair = KRAKEN_PAIRS[coinId];
+  if (!pair) return null;
+  const mins = KRAKEN_INTERVALS[intervalCode] || 1440;
+  try {
+    const url = "https://api.kraken.com/0/public/OHLC?pair=" + pair + "&interval=" + mins;
+    const res = await Promise.race([
+      fetch(url, { headers: { accept: "application/json" } }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("kraken timeout")), 5000)),
+    ]);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || (data.error && data.error.length)) return null;
+    const key = Object.keys(data.result || {}).find((k) => k !== "last");
+    const rows = key ? data.result[key] : null;
+    if (!Array.isArray(rows) || rows.length < 30) return null;
+    return {
+      ts: rows.map((r) => r[0] * 1000),
+      opens: rows.map((r) => parseFloat(r[1])),
+      highs: rows.map((r) => parseFloat(r[2])),
+      lows: rows.map((r) => parseFloat(r[3])),
+      closes: rows.map((r) => parseFloat(r[4])),
+      volumes: rows.map((r) => parseFloat(r[6])),
+    };
+  } catch { return null; }
+}
+
 async function fetchRawSeries(source, intervalCode) {
   try {
     if (source.type === "crypto") {
+      const krakenSeries = await fetchKrakenSeries(source.coinId, intervalCode);
+      if (krakenSeries) return krakenSeries;
       const days = ["D", "W", "M"].includes(intervalCode) ? 180 : 7;
       const res = await fetch(`https://api.coingecko.com/api/v3/coins/${source.coinId}/ohlc?vs_currency=usd&days=${days}`, { headers: { accept: "application/json" } });
       if (!res.ok) return null;
@@ -764,19 +803,32 @@ async function fetchStockOHLCV(symbol, range = "6mo", interval = "1d") {
 
 async function fetchCryptoOHLCV(coinId) {
   try {
-    // Fetch 180 days of daily OHLC data (free, no API key)
-    const url = `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=180`;
-    const res = await fetch(url, { headers: { accept: "application/json" } });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!Array.isArray(data) || data.length < 10) return null;
+    // Prefer true daily candles from the exchange (Kraken);
+    // CoinGecko's free OHLC is coarse even at days=180.
+    let closes = null;
+    let highs = null;
+    let lows = null;
+    let volumes = null;
+    const ks = await fetchKrakenSeries(coinId, "D");
+    if (ks && ks.closes.length >= 10) {
+      closes = ks.closes;
+      highs = ks.highs;
+      lows = ks.lows;
+      volumes = ks.volumes;
+    }
+    if (!closes) {
+      // Fetch 180 days of daily OHLC data (free, no API key)
+      const url = `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=180`;
+      const res = await fetch(url, { headers: { accept: "application/json" } });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length < 10) return null;
+      closes = data.map((d) => d[4]);
+      highs = data.map((d) => d[2]);
+      lows = data.map((d) => d[3]);
+    }
 
-    // CoinGecko OHLC: [[timestamp, open, high, low, close], ...]
-    const closes = data.map((d) => d[4]);
-    const highs = data.map((d) => d[2]);
-    const lows = data.map((d) => d[3]);
-
-    const ta = runFullTA(closes, highs, lows, null);
+    const ta = runFullTA(closes, highs, lows, volumes);
 
     // Also get current price + market data
     const priceUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true`;
