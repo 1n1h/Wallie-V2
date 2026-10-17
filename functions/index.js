@@ -958,6 +958,79 @@ async function searchGoogleNews(query, whenDays) {
 // SYSTEM PROMPT
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
+// --- Macro context (FRED) ---
+// Free Federal Reserve data via the keyless fredgraph CSV export.
+// Gives event/news answers the macro layer they were missing (a
+// gold drop on a hot CPI print is a macro story). Cached in memory
+// for 6 hours; every figure carries its observation date because
+// monthly series lag by design.
+let fredCache = { at: 0, text: null };
+async function fetchFredSeries(id, cosd) {
+  const url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=" + id + "&cosd=" + cosd;
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } });
+  if (!res.ok) return [];
+  const text = await res.text();
+  const rows = [];
+  for (const line of text.split("\n")) {
+    const parts = line.split(",");
+    if (parts.length < 2) continue;
+    const v = parseFloat(parts[1]);
+    if (!isFinite(v)) continue;
+    rows.push({ date: parts[0].trim(), value: v });
+  }
+  return rows;
+}
+function fredDayLabel(iso) {
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+function fredMonthLabel(iso) {
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+}
+async function fetchMacroContext() {
+  if (fredCache.text && Date.now() - fredCache.at < 6 * 3600 * 1000) return fredCache.text;
+  const cosd = new Date(Date.now() - 500 * 86400000).toISOString().split("T")[0];
+  const get = async (id) => {
+    try {
+      return await Promise.race([fetchFredSeries(id, cosd), new Promise((r) => setTimeout(() => r([]), 4000))]);
+    } catch { return []; }
+  };
+  const [cpi, ff, dgs, usd, unrate, vix] = await Promise.all([
+    get("CPIAUCSL"), get("FEDFUNDS"), get("DGS10"), get("DTWEXBGS"), get("UNRATE"), get("VIXCLS"),
+  ]);
+  const lines = [];
+  if (cpi.length > 12) {
+    const last = cpi[cpi.length - 1];
+    const yr = cpi[cpi.length - 13];
+    const yoy = ((last.value - yr.value) / yr.value) * 100;
+    lines.push("- Inflation (CPI): " + yoy.toFixed(1) + "% year over year (" + fredMonthLabel(last.date) + ")");
+  }
+  if (ff.length) {
+    const l = ff[ff.length - 1];
+    lines.push("- Fed funds rate: " + l.value.toFixed(2) + "% (" + fredMonthLabel(l.date) + ")");
+  }
+  if (unrate.length) {
+    const l = unrate[unrate.length - 1];
+    lines.push("- Unemployment rate: " + l.value.toFixed(1) + "% (" + fredMonthLabel(l.date) + ")");
+  }
+  function dailyLine(label, rows, fmt) {
+    if (!rows.length) return;
+    const l = rows[rows.length - 1];
+    const weekAgo = new Date(new Date(l.date + "T00:00:00Z").getTime() - 7 * 86400000).toISOString().split("T")[0];
+    let extra = "";
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i].date <= weekAgo) { extra = ", was " + fmt(rows[i].value) + " a week earlier"; break; }
+    }
+    lines.push("- " + label + ": " + fmt(l.value) + " (" + fredDayLabel(l.date) + ")" + extra);
+  }
+  dailyLine("10-year Treasury yield", dgs, (v) => v.toFixed(2) + "%");
+  dailyLine("US dollar (broad index)", usd, (v) => v.toFixed(1));
+  dailyLine("VIX (volatility index)", vix, (v) => v.toFixed(1));
+  if (!lines.length) return null;
+  const text = lines.join("\n");
+  if (lines.length >= 3) fredCache = { at: Date.now(), text };
+  return text;
+}
+
 function buildSignalModePrompt() {
   return `You are Wallie, an AI trading agent that reads charts. The user has uploaded a trading chart photographed from their phone.
 
@@ -1596,6 +1669,14 @@ exports.chat = onCall(
       // â”€â”€â”€ Build messages â”€â”€â”€
       // Chart Plot: ANALYZE image requests (not signal mode, not LOOK
       // frames) answer in the JSON envelope described above.
+      let macroData = null;
+      if (newsData) {
+        try { macroData = await fetchMacroContext(); } catch {}
+      }
+      if (macroData) {
+        finalSystemPrompt += "\n\nMACRO CONTEXT (Federal Reserve data via FRED \u2014 observation dates shown; monthly series lag by design):\n" + macroData + "\n\nUse this to explain WHY markets may be moving (rates, inflation, the dollar, fear). Never present a monthly figure as if it were released today \u2014 use its date.";
+      }
+
       const wantsPlot =
         hasImage && !signalMode && typeof prompt === "string" && prompt.trim().toUpperCase() === "ANALYZE";
       if (wantsPlot) {
