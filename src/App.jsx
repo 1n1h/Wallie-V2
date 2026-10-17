@@ -35,7 +35,6 @@ import PolicyPage from "./components/Policies/PolicyPage";
 import Affiliates from "./components/Affiliates/Affiliates";
 import Support from "./components/Support/Support";
 import Community from "./components/Community/Community";
-import Settings from "./components/Settings/Settings";
 import { useAuth } from "./context/AuthContext";
 import { captureRefFromUrl, stashedRef, clearRef, claimReferral } from "./config/referral";
 import './App.css';
@@ -81,7 +80,6 @@ function ChatPage() {
           «
         </button>
       )}
-      <SettingsModal />
       <nav className="mobile-tabbar" aria-label="Primary">
         {MOBILE_TABS.map((t) => {
           const Icon = t.icon;
@@ -111,7 +109,6 @@ function DemoPage() {
       <AppRail active="desk" />
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <DemoDesk />
-      <SettingsModal />
     </div>
   );
 }
@@ -165,10 +162,10 @@ function App() {
         <Route path="/strategies" element={<ProtectedRoute><div className="rail-page"><AppRail active="strategies" /><StrategiesPage /></div></ProtectedRoute>} />
         <Route path="/feed" element={<ProtectedRoute><div className="rail-page"><AppRail active="feed" /><FeedPage /></div></ProtectedRoute>} />
         <Route path="/education" element={<ProtectedRoute><div className="rail-page"><AppRail active="education" /><EducationPage /></div></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute><div className="rail-page"><AppRail active="settings" /><Settings /></div></ProtectedRoute>} />
             </>
           )}
         </Routes>
+        <SettingsModal />
       </div>
     </Router>
   );

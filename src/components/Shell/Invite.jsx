@@ -136,6 +136,13 @@ function InviteCard({ onClose }) {
 
 export default function InviteButton() {
   const [open, setOpen] = useState(false);
+
+  // Settings (and anywhere else) can ask this pop-out to open.
+  useEffect(() => {
+    const openIt = () => setOpen(true);
+    window.addEventListener("wallie:open-invite", openIt);
+    return () => window.removeEventListener("wallie:open-invite", openIt);
+  }, []);
   return (
     <>
       <button className="invite-pill" onClick={() => setOpen(true)}>

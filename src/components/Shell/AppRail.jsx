@@ -339,9 +339,13 @@ export default function AppRail({ active }) {
           <span className="rail-tip">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
         </button>
         <button
-          className={`rail-btn ${current === "settings" ? "active" : ""}`}
+          className="rail-btn"
           aria-label="Settings"
-          onClick={() => navigate("/settings")}
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent("wallie:open-settings", { detail: { tab: "general" } }),
+            )
+          }
         >
           <Settings size={21} strokeWidth={current === "settings" ? 2.3 : 2} />
           <span className="rail-tip">Settings</span>
