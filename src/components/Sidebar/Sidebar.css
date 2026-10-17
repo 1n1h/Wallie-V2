@@ -445,3 +445,16 @@
 .sb-icon-btn.active { background: rgba(0, 108, 237, 0.16); color: #4b90ff; }
 .sb-icon-btn.active:hover { background: rgba(0, 108, 237, 0.24); }
 [data-theme="light"] .sb-icon-btn.active { background: rgba(0, 108, 237, 0.14); color: #006ced; }
+
+/* Desktop: a closed history column is fully gone — the rail is the
+   only sidebar. (Below desktop widths the column keeps its strip.) */
+@media (min-width: 769px) {
+  .sidebar.collapsed {
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    border-right: none;
+    opacity: 0;
+    overflow: hidden;
+  }
+}

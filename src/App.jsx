@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import MaintenancePage from './components/MaintenancePage/MaintenancePage';
 import Main from "./components/Main/Main";
 import Sidebar from "./components/Sidebar/Sidebar";
@@ -37,6 +37,7 @@ import Support from "./components/Support/Support";
 import Community from "./components/Community/Community";
 import Settings from "./components/Settings/Settings";
 import { useAuth } from "./context/AuthContext";
+import { captureRefFromUrl, stashedRef, clearRef, claimReferral } from "./config/referral";
 import './App.css';
 
 // ============================================================
@@ -119,6 +120,24 @@ function App() {
   const [bypassed, setBypassed] = useState(
     () => sessionStorage.getItem("wallie_bypass") === "true"
   );
+
+  // Invite referrals: stash a ?ref= code from the landing URL on
+  // first touch, then claim it once the visitor is signed in. The
+  // function credits both accounts; terminal answers clear the stash.
+  const { user } = useAuth();
+  useEffect(() => { captureRefFromUrl(); }, []);
+  const claimTried = useRef(false);
+  useEffect(() => {
+    if (!user || claimTried.current) return;
+    const code = stashedRef();
+    if (!code) return;
+    claimTried.current = true;
+    claimReferral(code)
+      .then((r) => {
+        if (r && (r.ok || r.reason === "already_claimed" || r.reason === "self" || r.reason === "unknown_code")) clearRef();
+      })
+      .catch(() => { claimTried.current = false; });
+  }, [user]);
 
   const showMaintenance = MAINTENANCE_MODE && !bypassed;
 

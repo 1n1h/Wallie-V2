@@ -32,11 +32,8 @@ const Sidebar = ({ mobileOpen, onClose }) => {
   } = useContext(Context);
   const navigate = useNavigate();
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const { user, logout } = useAuth();
-  const [profileOpen, setProfileOpen] = useState(false);
-  const profileRef = useRef(null);
-  const menuRef = useRef(null);
   const [tip, setTip] = useState(null);
   const tipTimer = useRef(null);
 
@@ -59,20 +56,6 @@ const Sidebar = ({ mobileOpen, onClose }) => {
     return () => window.removeEventListener("wallie:toggle-history", toggle);
   }, []);
 
-  useEffect(() => {
-    const onDocClick = (e) => {
-      if (
-        profileRef.current &&
-        !profileRef.current.contains(e.target) &&
-        !(menuRef.current && menuRef.current.contains(e.target))
-      ) {
-        setProfileOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
   // Small, unhurried tooltips — rendered through a portal so the
   // collapsed rail's overflow can never clip them.
   const showTip = (e, text, always = false) => {
@@ -86,24 +69,6 @@ const Sidebar = ({ mobileOpen, onClose }) => {
   const hideTip = () => {
     clearTimeout(tipTimer.current);
     setTip(null);
-  };
-
-  const profileName = user?.displayName || (user?.email ? user.email.split("@")[0] : "Account");
-  const profileInitials = profileName.slice(0, 2).toUpperCase();
-
-  const handleLogout = async () => {
-    setProfileOpen(false);
-    await logout();
-    navigate("/");
-  };
-
-  const handleAdmin = () => {
-    setProfileOpen(false);
-    const pin = prompt("Enter admin PIN:");
-    if (pin === import.meta.env.VITE_ADMIN_PIN) {
-      sessionStorage.setItem("wallie_admin", "true");
-      navigate("/admin/dashboard");
-    }
   };
 
   const handleLoadChat = (index) => {
@@ -158,46 +123,6 @@ const Sidebar = ({ mobileOpen, onClose }) => {
         </div>
       )}
 
-      {/* Bottom: account only. All navigation lives in the app rail. */}
-      <div className="sb-bottom">
-        {/* Profile — moved here from the header */}
-        <div className="sb-profile" ref={profileRef}>
-          <div className="sb-profile-row" onClick={() => { hideTip(); setProfileOpen(!profileOpen); }} onMouseEnter={(e) => showTip(e, "Your account")} onMouseLeave={hideTip}>
-            {user?.photoURL ? (
-              <img className="sb-avatar" src={user.photoURL} alt="Profile" />
-            ) : (
-              <div className="sb-avatar sb-avatar-initials">{profileInitials}</div>
-            )}
-            {!collapsed && <span className="sb-label sb-profile-name">{profileName}</span>}
-          </div>
-          {profileOpen && createPortal(
-            <div
-              className="sb-profile-menu"
-              ref={menuRef}
-              style={{
-                position: "fixed",
-                left: collapsed ? 76 : 12,
-                bottom: 78,
-                top: "auto",
-                width: collapsed ? 232 : 236,
-                zIndex: 200,
-              }}
-            >
-              <div className="sb-menu-item" onClick={() => { setProfileOpen(false); window.dispatchEvent(new CustomEvent("wallie:open-settings", { detail: { section: "plan" } })); }}>
-                <Sparkles size={16} strokeWidth={1.8} /> Upgrade Plan
-              </div>
-              <div className="sb-menu-item" onClick={handleAdmin}>
-                <Lock size={16} strokeWidth={1.8} /> Admin Dashboard
-              </div>
-              <div className="sb-menu-divider" />
-              <div className="sb-menu-item" onClick={handleLogout}>
-                <LogOut size={16} strokeWidth={1.8} /> Log Out
-              </div>
-            </div>,
-            document.body
-          )}
-        </div>
-      </div>
       {tip && createPortal(
         <div className="sb-tip" style={{ left: tip.x, top: tip.y }}>
           {tip.text}

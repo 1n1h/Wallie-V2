@@ -10,6 +10,7 @@ import { Compass, TrendingUp, BookOpen, BarChart3, HandCoins, Eye, Bell, Plus, G
 
 import { useNavigate } from "react-router-dom";
 import SentimentGauge from "../Demo/SentimentGauge";
+import InviteButton from "../Shell/Invite";
 
 const GREETINGS = [
   "Hello,", "Welcome back,", "Howdy,", "Hey there,", "Good to see you,",
@@ -698,9 +699,7 @@ const Main = ({ onMenuClick }) => {
           </button>
         )}
         <div className="main-head-actions">
-          <button className="affiliate-pill" onClick={() => navigate("/affiliates")}>
-            <HandCoins size={15} strokeWidth={1.9} /> Affiliate
-          </button>
+          <InviteButton />
         </div>
         <div className="nav-profile" ref={profileRef} style={{ display: "none" }}>
           <div onClick={() => setIsProfileOpen(!isProfileOpen)}>

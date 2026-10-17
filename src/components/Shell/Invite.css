@@ -1,0 +1,130 @@
+/* Invite pill (replaces the old Affiliate pill in the chat header) */
+.invite-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 15px;
+  border: none;
+  border-radius: 999px;
+  background: #006ced;
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 108, 237, 0.28);
+}
+.invite-pill:hover { background: #0a84ff; }
+
+/* Invite pop-out (portal — sits above everything) */
+.inv-wrap { position: fixed; inset: 0; z-index: 1250; }
+.inv-catcher { position: absolute; inset: 0; }
+.inv-card {
+  position: absolute;
+  top: 60px;
+  right: 16px;
+  width: min(384px, 92vw);
+  background: #26221f;
+  border: 1px solid rgba(240, 230, 210, 0.12);
+  border-radius: 24px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+  padding: 22px 20px 18px;
+  color: #f5f2ea;
+}
+[data-theme="light"] .inv-card {
+  background: #fcfaf4;
+  border-color: rgba(101, 84, 50, 0.16);
+  box-shadow: 0 30px 70px rgba(60, 48, 20, 0.3);
+  color: #211d17;
+}
+.inv-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(127, 118, 100, 0.25);
+  color: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.inv-logo {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 4px auto 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+.inv-logo img { width: 58px; height: 58px; object-fit: contain; }
+.inv-title { font-size: 21px; font-weight: 700; margin: 0 0 5px; }
+.inv-sub { font-size: 14.5px; line-height: 1.5; color: #a79e8d; margin: 0 0 16px; }
+[data-theme="light"] .inv-sub { color: #6b6353; }
+.inv-link {
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 13px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 10px;
+}
+[data-theme="light"] .inv-link { background: rgba(33, 29, 23, 0.06); }
+.inv-copy {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #006ced;
+  color: #fff;
+  font-size: 15.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.inv-copy:hover { background: #0a84ff; }
+.inv-copy:disabled { opacity: 0.55; cursor: default; }
+.inv-status {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  border: 1px solid rgba(240, 230, 210, 0.12);
+  border-radius: 16px;
+  padding: 13px 14px;
+  margin-top: 14px;
+}
+[data-theme="light"] .inv-status { border-color: rgba(101, 84, 50, 0.16); }
+.inv-status-icon {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(0, 108, 237, 0.16);
+  color: #5ea0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-theme="light"] .inv-status-icon { color: #006ced; }
+.inv-status-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.inv-status-text strong { font-size: 14.5px; font-weight: 600; }
+.inv-status-text span { font-size: 13.5px; line-height: 1.45; color: #a79e8d; }
+[data-theme="light"] .inv-status-text span { color: #6b6353; }
+@media (max-width: 760px) {
+  .inv-card { top: 54px; right: 10px; }
+}

@@ -2362,3 +2362,43 @@ exports.feed = onCall({ cors: true }, async (request) => {
   symbols.forEach((s, i) => { bySymbol[s] = perSymbol[i] || []; });
   return { macro: macro || null, calendar, headlines: { general, bySymbol }, asOf: Date.now() };
 });
+
+
+// --- Invite referrals: a new user claims a friend's referral code ---
+// Both sides bank a 20%-off-first-month reward automatically: the
+// new user gets refReward on their doc; the referrer's joined and
+// coupons counters increment. Guarded: no self-referrals, one claim
+// per account, unknown codes are a quiet no-op.
+const FV = require("firebase-admin/firestore").FieldValue;
+
+exports.claimReferral = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "You must be signed in.");
+  }
+  const uid = request.auth.uid;
+  const code = String((request.data && request.data.refCode) || "")
+    .toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24);
+  if (!code) return { ok: false, reason: "no_code" };
+  const meRef = db.collection("users").doc(uid);
+  const meSnap = await meRef.get();
+  const me = meSnap.exists ? meSnap.data() : {};
+  if (me.referredBy) return { ok: false, reason: "already_claimed" };
+  const q = await db.collection("users").where("referralCode", "==", code).limit(2).get();
+  if (q.empty) return { ok: false, reason: "unknown_code" };
+  const refDoc = q.docs[0];
+  if (refDoc.id === uid) return { ok: false, reason: "self" };
+  const batch = db.batch();
+  batch.set(meRef, {
+    referredBy: code,
+    referredByUid: refDoc.id,
+    refReward: { pct: 20, kind: "first_month_off", status: "banked", at: Date.now() },
+  }, { merge: true });
+  batch.update(refDoc.ref, {
+    "referrals.joined": FV.increment(1),
+    "referrals.coupons": FV.increment(1),
+  });
+  batch.set(db.collection("referrals").doc(uid), { referrerUid: refDoc.id, code, at: Date.now() });
+  await batch.commit();
+  console.log("Referral claimed:", code, "by", uid);
+  return { ok: true };
+});
