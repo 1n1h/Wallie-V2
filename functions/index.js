@@ -11,6 +11,7 @@ const db = getFirestore();
 const togetherKey = defineSecret("TOGETHER_API_KEY");
 const geminiKey = defineSecret("GEMINI_API_KEY");
 const metaKey = defineSecret("META_MODEL_API_KEY");
+const browserUseKey = defineSecret("BROWSER_USE_API_KEY");
 
 
 const TOGETHER_API_URL = "https://api.together.xyz/v1/chat/completions";
@@ -1649,6 +1650,50 @@ async function fetchYouTubeTranscript(videoId) {
   }
 }
 
+async function readLinkWithBrowser(link) {
+  try {
+    let key = "";
+    try { key = browserUseKey.value().trim(); } catch (e) { key = ""; }
+    if (!key) return null;
+    const taskText = "Open this page and read what it teaches: " + link.url + " — Do not sign in to anything; do not like, subscribe, follow, or comment. Return: the title, the creator or channel name, and a faithful account of the content. If it teaches a trading strategy, list its exact rules: the setup, entry trigger, stop loss, take profit, any filters or minimum requirements, in order. If the page cannot be read, say PAGE UNREADABLE and why.";
+    const headers = { "Content-Type": "application/json", "X-Browser-Use-API-Key": key };
+    const deadline = Date.now() + 75000;
+    const createTimer = new Promise((resolve) => setTimeout(() => resolve(null), 15000));
+    const createRes = await Promise.race([
+      fetch("https://api.browser-use.com/api/v4/runs", { method: "POST", headers: headers, body: JSON.stringify({ task: taskText, maxCostUsd: 1 }) }),
+      createTimer,
+    ]);
+    if (!createRes || !createRes.ok) return null;
+    const created = await createRes.json();
+    const runId = created && created.id;
+    if (!runId) return null;
+    let status = "";
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      try {
+        const stTimer = new Promise((resolve) => setTimeout(() => resolve(null), 10000));
+        const stRes = await Promise.race([fetch("https://api.browser-use.com/api/v4/runs/" + runId + "/status", { headers: headers }), stTimer]);
+        if (stRes && stRes.ok) {
+          const st = await stRes.json();
+          status = (st && st.status) || "";
+        }
+      } catch (e) { /* keep polling until the deadline */ }
+      if (status === "completed") break;
+      if (status && status !== "running" && status !== "queued" && status !== "created" && status !== "pending" && status !== "in_progress") return null;
+    }
+    if (status !== "completed") return null;
+    const getTimer = new Promise((resolve) => setTimeout(() => resolve(null), 10000));
+    const getRes = await Promise.race([fetch("https://api.browser-use.com/api/v4/runs/" + runId, { headers: headers }), getTimer]);
+    if (!getRes || !getRes.ok) return null;
+    const run = await getRes.json();
+    const text = (((run && (run.output || run.result)) || "") + "").trim();
+    if (text.length < 40) return null;
+    return text.slice(0, 6000);
+  } catch (e) {
+    return null;
+  }
+}
+
 async function readSharedLink(promptText) {
   try {
     const link = extractSharedLink(promptText);
@@ -1658,15 +1703,19 @@ async function readSharedLink(promptText) {
     if (link.platform === "YouTube" && link.id) {
       transcript = await fetchYouTubeTranscript(link.id);
     }
-    console.log("SharedLink " + link.platform + " meta=" + (meta ? "y" : "n") + " transcript=" + (transcript ? transcript.length : 0));
-    return { link: link, meta: meta, transcript: transcript };
+    let browserNotes = null;
+    if (!transcript && (link.platform === "YouTube" || link.platform === "TikTok")) {
+      browserNotes = await readLinkWithBrowser(link);
+    }
+    console.log("SharedLink " + link.platform + " meta=" + (meta ? "y" : "n") + " transcript=" + (transcript ? transcript.length : 0) + " browser=" + (browserNotes ? browserNotes.length : 0));
+    return { link: link, meta: meta, transcript: transcript, browserNotes: browserNotes };
   } catch (e) {
     return null;
   }
 }
 // [/SharedLink helpers]
 exports.chat = onCall(
-  { secrets: [togetherKey, geminiKey, metaKey], timeoutSeconds: 120, cors: true },
+  { secrets: [togetherKey, geminiKey, metaKey, browserUseKey], timeoutSeconds: 120, cors: true },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "You must be signed in to use Wallie.");
@@ -1942,8 +1991,10 @@ exports.chat = onCall(
         else finalSystemPrompt += "The user shared this link: " + sl.link.url + "\n";
         if (sl.transcript) {
           finalSystemPrompt += "\nFull transcript of the video:\n" + sl.transcript + "\n\nWork from the transcript: explain what it teaches in plain language. If it presents a trading strategy, pull out the exact rules (setup, entry trigger, stop, target, and any filters or minimums) and lay them out as a short list, then ask if the user wants to save it as a strategy or have you teach it step by step. Quote nothing at length; teach it in your own words.";
+        } else if (sl.browserNotes) {
+          finalSystemPrompt += "\nSHARED LINK — Wallie sent its own browser to read this " + sl.link.platform + " page for the user. What it brought back:\n" + sl.browserNotes + "\n\nTeach from this material in your own words. If it describes a strategy, pull out the exact rules (setup, entry, stop, target, filters, minimums) as a short list, then offer to save it as one of the user's strategies or to teach it step by step. Do not reproduce the video's script or long passages.";
         } else {
-          finalSystemPrompt += "\nThe full content could not be pulled automatically (" + (sl.link.platform === "Instagram" ? "Instagram blocks outside reads" : "the platform restricted it") + "). Work from the title and the conversation. Do NOT claim you cannot open links and never use boilerplate about being a language model. If the user is asking about the video's content or strategy, tell them what you found above and ask for the transcript or a short description in ONE line (YouTube: the transcript is under the video's ... menu; TikTok/Instagram: paste the caption or description). If they describe it, extract the rules and offer to save it as a strategy.";
+          finalSystemPrompt += "\nThe full content could not be pulled automatically (" + (sl.link.platform === "Instagram" ? "Instagram blocks outside reads" : "the platform restricted it") + "). You DO know what this is — the lines above name it and who made it. Open your reply by naming it and what it covers. Never say the title or the topic was not provided. Work from the title and the conversation. Do NOT claim you cannot open links and never use boilerplate about being a language model. If the user is asking about the video's content or strategy, tell them what you found above and ask for the transcript or a short description in ONE line (YouTube: the transcript is under the video's ... menu; TikTok/Instagram: paste the caption or description). If they describe it, extract the rules and offer to save it as a strategy.";
         }
       }
       const wantsPlot =
