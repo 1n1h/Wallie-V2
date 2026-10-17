@@ -2187,3 +2187,74 @@ exports.levels = onCall({ cors: true }, async (request) => {
     return { levels: null };
   }
 });
+
+// ─── Feed function: structured headlines + economic calendar + macro ───
+// Backs the Feed page: general market headlines, per-symbol headlines for
+// the user's watchlist, this week's economic calendar (ForexFactory data
+// via the free faireconomy JSON mirror — FF offers no public API), and the
+// FRED macro block. Everything fails soft: a dead source returns empty.
+async function searchGoogleNewsItems(query, whenDays, limit) {
+  try {
+    const boundedQuery = whenDays && whenDays > 0 ? query + " when:" + whenDays + "d" : query;
+    const url = "https://news.google.com/rss/search?q=" + encodeURIComponent(boundedQuery) + "&hl=en-US&gl=US&ceid=US:en";
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+    });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const results = [];
+    const itemRegex = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<link>([\s\S]*?)<\/link>[\s\S]*?<pubDate>([\s\S]*?)<\/pubDate>[\s\S]*?<\/item>/g;
+    let match;
+    while ((match = itemRegex.exec(xml)) !== null && results.length < (limit || 6)) {
+      const title = match[1].replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]*>/g, "").trim();
+      const link = match[2].replace(/<!\[CDATA\[|\]\]>/g, "").trim();
+      if (title) results.push({ title, link, date: match[3].trim() });
+    }
+    return results;
+  } catch (err) {
+    console.error("searchGoogleNewsItems failed:", err.message);
+    return [];
+  }
+}
+
+async function fetchEconomicCalendar() {
+  try {
+    const res = await Promise.race([
+      fetch("https://nfs.faireconomy.media/ff_calendar_thisweek.json", { headers: { accept: "application/json" } }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("calendar timeout")), 6000)),
+    ]);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.slice(0, 250).map((e) => ({
+      title: String(e.title || ""),
+      country: String(e.country || ""),
+      date: String(e.date || ""),
+      impact: String(e.impact || ""),
+      forecast: String(e.forecast || ""),
+      previous: String(e.previous || ""),
+      actual: String(e.actual || ""),
+    }));
+  } catch (err) {
+    console.error("fetchEconomicCalendar failed:", err.message);
+    return [];
+  }
+}
+
+exports.feed = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "You must be signed in.");
+  }
+  const symbols = [...new Set((Array.isArray(request.data?.symbols) ? request.data.symbols : [])
+    .map((s) => String(s).toUpperCase().trim()).filter(Boolean))].slice(0, 4);
+  const jobs = [
+    fetchMacroContext().catch(() => null),
+    fetchEconomicCalendar(),
+    searchGoogleNewsItems("stock market forex gold bitcoin news today", 2, 8),
+    ...symbols.map((s) => searchGoogleNewsItems(s + " price news", 3, 5)),
+  ];
+  const [macro, calendar, general, ...perSymbol] = await Promise.all(jobs);
+  const bySymbol = {};
+  symbols.forEach((s, i) => { bySymbol[s] = perSymbol[i] || []; });
+  return { macro: macro || null, calendar, headlines: { general, bySymbol }, asOf: Date.now() };
+});

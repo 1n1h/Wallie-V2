@@ -22,6 +22,10 @@ const MOBILE_SECTIONS = {
   identity: "identity",
 };
 import DemoDesk from "./components/Demo/DemoDesk";
+import AppRail from "./components/Shell/AppRail";
+import FeedPage from "./components/Feed/Feed";
+import StrategiesPage from "./components/Strategies/Strategies";
+import EducationPage from "./components/Education/Education";
 import LandingPage from './components/LandingPage/LandingPage';
 import Signup from "./components/Signup";
 import Pricing from "./components/Pricing";
@@ -62,6 +66,7 @@ function ChatPage() {
   return (
     <div className="chat-container">
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+      <AppRail active="chat" />
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <Main onMenuClick={() => setSidebarOpen(true)} />
       {(panelOpen || mobileTab !== "chat") && (
@@ -102,6 +107,7 @@ function DemoPage() {
   return (
     <div className="chat-container">
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+      <AppRail active="desk" />
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <DemoDesk />
       <SettingsModal />
@@ -134,10 +140,13 @@ function App() {
               <Route path="/policy/:type" element={<PolicyPage />} />
               <Route path="/affiliates" element={<Affiliates />} />
               <Route path="/support" element={<Support />} />
-              <Route path="/community" element={<ProtectedRoute><Community /></ProtectedRoute>} />
+              <Route path="/community" element={<ProtectedRoute><div className="rail-page"><AppRail active="community" /><Community /></div></ProtectedRoute>} />
               <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
               <Route path="/demo" element={<ProtectedRoute><DemoPage /></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="/strategies" element={<ProtectedRoute><div className="rail-page"><AppRail active="strategies" /><StrategiesPage /></div></ProtectedRoute>} />
+        <Route path="/feed" element={<ProtectedRoute><div className="rail-page"><AppRail active="feed" /><FeedPage /></div></ProtectedRoute>} />
+        <Route path="/education" element={<ProtectedRoute><div className="rail-page"><AppRail active="education" /><EducationPage /></div></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><div className="rail-page"><AppRail active="settings" /><Settings /></div></ProtectedRoute>} />
             </>
           )}
         </Routes>

@@ -1,0 +1,71 @@
+/* ===== Saved Strategies page ===== */
+.strat-page {
+  flex: 1;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 34px 40px 90px;
+  background: #2a2724;
+  color: #f5f2ea;
+  box-sizing: border-box;
+}
+[data-theme="light"] .strat-page { background: #f4f0e7; color: #211d17; }
+.strat-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  max-width: 980px;
+  margin-bottom: 26px;
+}
+.strat-head h1 { font-size: 30px; margin: 0 0 6px; display: flex; align-items: center; gap: 10px; }
+.strat-sub { color: #a79e8d; margin: 0; font-size: 15px; line-height: 1.55; max-width: 560px; }
+[data-theme="light"] .strat-sub { color: #6b6252; }
+.strat-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #006ced;
+  color: #ffffff;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 20px;
+  font-weight: 600;
+  font-size: 14.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.strat-add:hover { background: #0a84ff; box-shadow: 0 0 0 4px rgba(0, 108, 237, 0.22); }
+.strat-note { color: #a79e8d; font-size: 14.5px; }
+.strat-empty {
+  max-width: 640px;
+  background: #26221f;
+  border: 1px dashed rgba(240, 230, 210, 0.22);
+  border-radius: 18px;
+  padding: 30px 28px;
+}
+[data-theme="light"] .strat-empty { background: #fcfaf4; border-color: rgba(101, 84, 50, 0.3); }
+.strat-empty h2 { margin: 0 0 8px; font-size: 21px; }
+.strat-empty p { color: #b9b2a2; line-height: 1.6; font-size: 15px; margin: 0 0 18px; }
+[data-theme="light"] .strat-empty p { color: #57503f; }
+.strat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  max-width: 1080px;
+}
+.strat-card {
+  background: #26221f;
+  border: 1px solid rgba(240, 230, 210, 0.08);
+  border-radius: 16px;
+  padding: 18px;
+}
+[data-theme="light"] .strat-card { background: #fcfaf4; border-color: rgba(101, 84, 50, 0.12); }
+.strat-card h3 { margin: 0 0 4px; font-size: 17.5px; }
+.strat-meta { color: #a79e8d; margin: 0 0 10px; font-size: 13.5px; }
+.strat-stats { margin: 0; font-size: 14px; color: #e8e6e1; }
+[data-theme="light"] .strat-stats { color: #3e382e; }
+@media (max-width: 760px) {
+  .strat-page { padding: 24px 18px 90px; }
+  .strat-head { flex-direction: column; }
+}
