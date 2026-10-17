@@ -1496,6 +1496,58 @@ const DESK_ACTIONS_INSTRUCTION =
   "In your visible text, briefly confirm what you are doing (e.g. \"Opening a USDJPY buy on your desk at 1:50 with a 4R target\"). The app executes it and shows them the fill — never say you cannot place demo trades; on this desk you can. If they did not ask you to do anything, answer normally with NO desk block." +
   "\nAfter you carry out a desk action, end your visible reply with ONE short question offering a sensible next step, matched to what just happened — e.g. after showing a chart: \"Want the levels drawn, a trade signal, or an alert at the next level?\"; after opening a position: \"Want an alert at your target, or should I keep an eye on the stop?\" Keep it to one line.";
 
+
+// --- Semantic cache for timeless education answers ---
+// Repeat concept questions ("what is RSI?") are embedded and matched
+// against previously stored Q&A in the eduCache collection; a close
+// enough match is served without an LLM call. The cache is gated to
+// knowledge-only turns and only knowledge-only answers are stored
+// (see the hooks in the chat handler), so a cached answer can never
+// carry stale market data.
+const EDU_CACHE_V = "v1";
+const EDU_CACHE_THRESHOLD = 0.9;
+const EDU_EMBED_MODEL = "BAAI/bge-base-en-v1.5";
+
+function normalizeEduQuestion(q) {
+  return String(q || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function eduCosine(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || !a.length) return 0;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  if (!na || !nb) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+async function fetchEduEmbedding(text, apiKey) {
+  const res = await Promise.race([
+    fetch("https://api.together.xyz/v1/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+      body: JSON.stringify({ model: EDU_EMBED_MODEL, input: text }),
+    }),
+    new Promise((_, rej) => setTimeout(() => rej(new Error("embed timeout")), 2500)),
+  ]);
+  if (!res.ok) throw new Error("embed status " + res.status);
+  const json = await res.json();
+  const vec = json && json.data && json.data[0] && json.data[0].embedding;
+  if (!Array.isArray(vec) || !vec.length) throw new Error("embed shape");
+  return vec;
+}
+
+async function readEduCache(embedding) {
+  const snap = await db.collection("eduCache").orderBy("hits", "desc").limit(400).get();
+  let best = null, bestScore = 0;
+  snap.forEach((doc) => {
+    const d = doc.data();
+    if (!d || d.v !== EDU_CACHE_V || !d.answer || !Array.isArray(d.embedding)) return;
+    const s = eduCosine(embedding, d.embedding);
+    if (s > bestScore) { bestScore = s; best = { ref: doc.ref, answer: d.answer, hits: d.hits || 0, q: d.q }; }
+  });
+  return { best, bestScore };
+}
+
 exports.chat = onCall(
   { secrets: [togetherKey, geminiKey, metaKey], timeoutSeconds: 120, cors: true },
   async (request) => {
@@ -1588,6 +1640,42 @@ exports.chat = onCall(
       // miss, an intent-router call reads the message WITH context,
       // so free-form asks ("go to the 15 min tf", "what's the RSI
       // at") resolve a symbol and timeframe the way a person would.
+
+      // Semantic education cache (read): serve timeless concept
+      // questions from the shared cache instead of a fresh LLM
+      // call. Strictly gated — no image, no desk/signal mode, no
+      // event/price intent, no asset named, no chart or sentiment
+      // request, and no market context in the recent history.
+      // Any doubt falls through to the normal flow.
+      let eduEmbed = null;
+      let eduNormQ = "";
+      let eduExactDoc = false;
+      const eduDesk = typeof userPersona === "string" && userPersona.includes("[[DESK_MODE]]");
+      const eduHistClean = !(Array.isArray(history) && history.slice(-4).some((h) => h && (h.hadImage || detectPrimaryTicker(typeof h.text === "string" ? h.text : "", null))));
+      const eduGate = !signalMode && !hasImage && !isCasual && !eduDesk && !wantsEventNews && !relativeDay &&
+        !needsPrice && eduHistClean &&
+        detectAssets(prompt).cryptos.length === 0 && detectAssets(prompt).stocks.length === 0 &&
+        !detectChartRequest(prompt) && !detectSentimentRequest(prompt) &&
+        /^(what is|what's|whats|explain|define|meaning of|how does|how do|why does|difference between|teach me|tell me about|what are)\b/i.test(prompt.trim()) &&
+        !/\b(at|right now|today|currently)\b/i.test(prompt);
+      if (eduGate) {
+        try {
+          eduNormQ = normalizeEduQuestion(prompt);
+          eduEmbed = await fetchEduEmbedding(eduNormQ || prompt, apiKey);
+          const eduFound = await readEduCache(eduEmbed);
+          if (eduFound.best && eduFound.best.q === eduNormQ) eduExactDoc = true;
+          if (eduFound.best && eduFound.bestScore >= EDU_CACHE_THRESHOLD) {
+            console.log("EduCache HIT score=" + eduFound.bestScore.toFixed(3) + " q=\"" + eduNormQ + "\"");
+            eduFound.best.ref.update({ hits: eduFound.best.hits + 1 }).catch(() => {});
+            return { response: eduFound.best.answer };
+          }
+          console.log("EduCache MISS best=" + eduFound.bestScore.toFixed(3) + " q=\"" + eduNormQ + "\"");
+        } catch (e) {
+          console.log("EduCache read skipped:", e.message);
+          eduEmbed = null;
+        }
+      }
+
       let intent = null;
       let intentChart = null;
       let wantTA = needsTA;
@@ -2032,6 +2120,22 @@ exports.chat = onCall(
       }
 
       logApiUsage(data.usage);
+
+
+      // Semantic education cache (write): only knowledge-only
+      // answers are ever stored — no TA, price or news data was
+      // attached and no cards or actions were produced — so a
+      // cached answer can never go stale.
+      if (eduEmbed && eduNormQ && !eduExactDoc && textResponse &&
+        !taData && !priceData && !newsData &&
+        !plot && !chartReq && !showcaseReq && !signalChart && !sentimentReq && !deskActions &&
+        textResponse.length >= 80 && textResponse.length <= 6000) {
+        db.collection("eduCache").add({
+          q: eduNormQ, question: String(prompt).slice(0, 300), embedding: eduEmbed,
+          answer: textResponse, v: EDU_CACHE_V, hits: 0, createdAt: Date.now(),
+        }).then(() => console.log("EduCache STORED q=\"" + eduNormQ + "\""))
+          .catch((e) => console.log("EduCache store failed:", e.message));
+      }
 
       const out = { response: textResponse || "I'm not sure how to respond to that. Could you try rephrasing?" };
       if (plot) out.plot = plot;
