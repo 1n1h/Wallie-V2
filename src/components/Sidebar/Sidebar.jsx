@@ -32,7 +32,6 @@ const Sidebar = ({ mobileOpen, onClose }) => {
   } = useContext(Context);
   const navigate = useNavigate();
   const location = useLocation();
-  const onDemo = location.pathname === "/demo";
   const [collapsed, setCollapsed] = useState(false);
   const { user, logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -51,6 +50,13 @@ const Sidebar = ({ mobileOpen, onClose }) => {
       window.removeEventListener("wallie:sidebar-collapse", collapse);
       window.removeEventListener("wallie:sidebar-restore", restore);
     };
+  }, []);
+
+  // The app rail's chat bubble opens and closes this history column.
+  useEffect(() => {
+    const toggle = () => setCollapsed((c) => !c);
+    window.addEventListener("wallie:toggle-history", toggle);
+    return () => window.removeEventListener("wallie:toggle-history", toggle);
   }, []);
 
   useEffect(() => {
@@ -80,38 +86,6 @@ const Sidebar = ({ mobileOpen, onClose }) => {
   const hideTip = () => {
     clearTimeout(tipTimer.current);
     setTip(null);
-  };
-
-  // Theme: quick sun/moon toggle. The attribute on <html> is the source of
-  // truth; a MutationObserver keeps this button in sync when the theme is
-  // changed elsewhere (e.g. the Settings pop-out).
-  const [theme, setThemeState] = useState(
-    () => document.documentElement.getAttribute("data-theme") || "dark",
-  );
-  useEffect(() => {
-    const el = document.documentElement;
-    const sync = () => setThemeState(el.getAttribute("data-theme") || "dark");
-    sync();
-    const obs = new MutationObserver(sync);
-    obs.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => obs.disconnect();
-  }, []);
-
-  const toggleTheme = async () => {
-    const next = theme === "dark" ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", next);
-    setThemeState(next);
-    if (user) {
-      try {
-        await setDoc(
-          doc(db, "users", user.uid),
-          { settings: { theme: next } },
-          { merge: true },
-        );
-      } catch {
-        /* theme still applies on this device */
-      }
-    }
   };
 
   const profileName = user?.displayName || (user?.email ? user.email.split("@")[0] : "Account");
@@ -184,37 +158,8 @@ const Sidebar = ({ mobileOpen, onClose }) => {
         </div>
       )}
 
-      {/* Bottom Navigation */}
+      {/* Bottom: account only. All navigation lives in the app rail. */}
       <div className="sb-bottom">
-        <div
-          className={`sb-icon-btn ${onDemo ? "active" : ""}`}
-          onClick={() => { hideTip(); navigate(onDemo ? "/chat" : "/demo"); }}
-          onMouseEnter={(e) => showTip(e, onDemo ? "Back to chat with Wallie" : "Practice trading on live markets")}
-          onMouseLeave={hideTip}
-        >
-          {onDemo ? <MessageCircle size={20} strokeWidth={1.8} /> : <TrendingUp size={20} strokeWidth={1.8} />}
-          {!collapsed && <span className="sb-label">{onDemo ? "Back to Chat" : "Demo Desk"}</span>}
-        </div>
-
-        <div className="sb-icon-btn" onClick={() => { hideTip(); navigate("/community"); }} onMouseEnter={(e) => showTip(e, "Join the conversation")} onMouseLeave={hideTip}>
-          <Users size={20} strokeWidth={1.8} />
-          {!collapsed && <span className="sb-label">Community</span>}
-        </div>
-
-        <div className="sb-divider" />
-
-        <div className="sb-icon-btn" onClick={() => { hideTip(); window.dispatchEvent(new CustomEvent("wallie:open-settings", { detail: { section: "general" } })); }} onMouseEnter={(e) => showTip(e, "Make it yours")} onMouseLeave={hideTip}>
-          <Settings size={20} strokeWidth={1.8} />
-          {!collapsed && <span className="sb-label">Settings</span>}
-        </div>
-
-        <div className="sb-icon-btn" onClick={() => { hideTip(); toggleTheme(); }} onMouseEnter={(e) => showTip(e, theme === "dark" ? "Switch to light mode" : "Switch to dark mode")} onMouseLeave={hideTip}>
-          {theme === "dark" ? <Sun size={20} strokeWidth={1.8} /> : <Moon size={20} strokeWidth={1.8} />}
-          {!collapsed && <span className="sb-label">{theme === "dark" ? "Light mode" : "Dark mode"}</span>}
-        </div>
-
-        <div className="sb-divider" />
-
         {/* Profile — moved here from the header */}
         <div className="sb-profile" ref={profileRef}>
           <div className="sb-profile-row" onClick={() => { hideTip(); setProfileOpen(!profileOpen); }} onMouseEnter={(e) => showTip(e, "Your account")} onMouseLeave={hideTip}>
@@ -240,9 +185,6 @@ const Sidebar = ({ mobileOpen, onClose }) => {
             >
               <div className="sb-menu-item" onClick={() => { setProfileOpen(false); window.dispatchEvent(new CustomEvent("wallie:open-settings", { detail: { section: "plan" } })); }}>
                 <Sparkles size={16} strokeWidth={1.8} /> Upgrade Plan
-              </div>
-              <div className="sb-menu-item" onClick={() => { setProfileOpen(false); navigate("/community"); }}>
-                <Users size={16} strokeWidth={1.8} /> Community
               </div>
               <div className="sb-menu-item" onClick={handleAdmin}>
                 <Lock size={16} strokeWidth={1.8} /> Admin Dashboard

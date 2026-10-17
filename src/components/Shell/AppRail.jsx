@@ -1,22 +1,33 @@
 import { useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  Download,
   Library,
   Lightbulb,
   MessageCircle,
+  Monitor,
+  Moon,
   Newspaper,
   Search,
   Settings,
+  Smartphone,
+  Sun,
   TrendingUp,
   Users,
   X,
 } from "lucide-react";
+import { doc, setDoc } from "firebase/firestore";
 import { Context } from "../../context/Context.jsx";
+import { useAuth } from "../../context/AuthContext.jsx";
+import { db } from "../../firebase";
 import wallieMark from "../../assets/wallie-mark.png";
 import "./AppRail.css";
 
+const APP_STORE_URL = "https://apps.apple.com/us/app/wallie-ai/id6744089470";
+
 const ITEMS = [
-  { id: "chat", label: "Chat", icon: MessageCircle, to: "/chat" },
+  { id: "chat", label: "Chat", icon: MessageCircle, action: "chat" },
   { id: "search", label: "Search", icon: Search, action: "search" },
   { id: "desk", label: "Desk", icon: TrendingUp, to: "/demo" },
   { id: "strategies", label: "Saved Strategies", icon: Lightbulb, to: "/strategies" },
@@ -106,10 +117,86 @@ function SearchOverlay({ onClose }) {
   );
 }
 
+function DownloadCard({ onClose }) {
+  const [macSoon, setMacSoon] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="dl-wrap">
+      <div className="dl-catcher" onClick={onClose} />
+      <div className="dl-card" role="dialog" aria-label="Download the Wallie app">
+        <button className="dl-close" onClick={onClose} aria-label="Close">
+          <X size={16} />
+        </button>
+        <div className="dl-visual" aria-hidden="true">
+          <img className="dl-shot back" src="/apps/app-desk.jpg" alt="" />
+          <img className="dl-shot front" src="/apps/app-chat.jpg" alt="" />
+        </div>
+        <h3 className="dl-title">Trade with Wallie anywhere</h3>
+        <p className="dl-sub">Download Wallie for iOS! Android &amp; Mac Coming soon.</p>
+        <button
+          className="dl-btn"
+          onClick={() => window.open(APP_STORE_URL, "_blank", "noopener")}
+        >
+          <Smartphone size={18} /> Mobile apps
+        </button>
+        <button
+          className={`dl-btn ${macSoon ? "soon" : ""}`}
+          onClick={() => setMacSoon(true)}
+          disabled={macSoon}
+        >
+          <Monitor size={18} /> {macSoon ? "Coming soon" : "Mac app"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AppRail({ active }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [dlOpen, setDlOpen] = useState(false);
+
+  // Theme: the attribute on <html> is the source of truth; a
+  // MutationObserver keeps this toggle in sync when the theme is
+  // changed elsewhere (e.g. the Settings pop-out).
+  const [theme, setThemeState] = useState(
+    () => document.documentElement.getAttribute("data-theme") || "dark",
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    const sync = () => setThemeState(el.getAttribute("data-theme") || "dark");
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, []);
+
+  const toggleTheme = async () => {
+    const next = theme === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    setThemeState(next);
+    if (user) {
+      try {
+        await setDoc(
+          doc(db, "users", user.uid),
+          { settings: { theme: next } },
+          { merge: true },
+        );
+      } catch {
+        /* theme still applies on this device */
+      }
+    }
+  };
 
   const path = location.pathname;
   const current =
@@ -128,6 +215,16 @@ export default function AppRail({ active }) {
                 ? "settings"
                 : "chat");
 
+  // The chat bubble opens the chat-history column on pages that
+  // have one (chat, desk); anywhere else it goes to the chat page.
+  const onChatClick = () => {
+    if (path.startsWith("/chat") || path.startsWith("/demo")) {
+      window.dispatchEvent(new CustomEvent("wallie:toggle-history"));
+    } else {
+      navigate("/chat");
+    }
+  };
+
   return (
     <>
       <nav className="app-rail" aria-label="Wallie sections">
@@ -144,20 +241,42 @@ export default function AppRail({ active }) {
               title={item.label}
               aria-label={item.label}
               aria-current={isActive ? "page" : undefined}
-              onClick={() => (item.action === "search" ? setSearchOpen(true) : navigate(item.to))}
+              onClick={() =>
+                item.action === "search"
+                  ? setSearchOpen(true)
+                  : item.action === "chat"
+                    ? onChatClick()
+                    : navigate(item.to)
+              }
             >
-              <Icon size={21} strokeWidth={isActive ? 2.2 : 1.8} />
+              <Icon size={21} strokeWidth={isActive ? 2.3 : 2} />
             </button>
           );
         })}
         <div className="rail-spacer" />
+        <button
+          className="rail-btn"
+          title="Download Apps"
+          aria-label="Download Apps"
+          onClick={() => setDlOpen(true)}
+        >
+          <Download size={21} strokeWidth={2} />
+        </button>
+        <button
+          className="rail-btn"
+          title={theme === "dark" ? "Light mode" : "Dark mode"}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          onClick={toggleTheme}
+        >
+          {theme === "dark" ? <Sun size={21} strokeWidth={2} /> : <Moon size={21} strokeWidth={2} />}
+        </button>
         <button
           className={`rail-btn ${current === "settings" ? "active" : ""}`}
           title="Settings"
           aria-label="Settings"
           onClick={() => navigate("/settings")}
         >
-          <Settings size={21} strokeWidth={current === "settings" ? 2.2 : 1.8} />
+          <Settings size={21} strokeWidth={current === "settings" ? 2.3 : 2} />
         </button>
       </nav>
 
@@ -167,7 +286,8 @@ export default function AppRail({ active }) {
         </button>
       )}
 
-      {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
+      {searchOpen && createPortal(<SearchOverlay onClose={() => setSearchOpen(false)} />, document.body)}
+      {dlOpen && createPortal(<DownloadCard onClose={() => setDlOpen(false)} />, document.body)}
     </>
   );
 }

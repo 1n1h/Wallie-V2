@@ -44,7 +44,7 @@
 }
 .rail-btn:hover { background: rgba(255, 255, 255, 0.07); color: #f4f0e7; }
 .rail-btn.active { background: rgba(255, 255, 255, 0.1); color: #ffffff; }
-[data-theme="light"] .rail-btn { color: #8a8172; }
+[data-theme="light"] .rail-btn { color: #57503f; }
 [data-theme="light"] .rail-btn:hover { background: rgba(33, 29, 23, 0.06); color: #211d17; }
 [data-theme="light"] .rail-btn.active { background: rgba(33, 29, 23, 0.09); color: #211d17; }
 .rail-spacer { flex: 1; }
@@ -75,8 +75,10 @@
 .search-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(12, 10, 8, 0.55);
-  z-index: 400;
+  background: rgba(12, 10, 8, 0.5);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  z-index: 1300;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -170,4 +172,83 @@
 
 @media (max-width: 760px) {
   .app-rail { display: none; }
+}
+
+/* Download Apps pop-out (rendered through a portal, above everything) */
+.dl-wrap { position: fixed; inset: 0; z-index: 1250; }
+.dl-catcher { position: absolute; inset: 0; }
+.dl-card {
+  position: absolute;
+  left: 74px;
+  bottom: 14px;
+  width: min(400px, 92vw);
+  background: #26221f;
+  border: 1px solid rgba(240, 230, 210, 0.12);
+  border-radius: 22px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+  padding: 16px 18px 18px;
+}
+[data-theme="light"] .dl-card {
+  background: #fcfaf4;
+  border-color: rgba(101, 84, 50, 0.16);
+  box-shadow: 0 30px 70px rgba(60, 48, 20, 0.3);
+}
+.dl-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(127, 118, 100, 0.25);
+  color: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.dl-visual {
+  position: relative;
+  height: 216px;
+  overflow: hidden;
+  border-radius: 14px;
+}
+.dl-shot {
+  position: absolute;
+  width: 126px;
+  border-radius: 17px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+}
+.dl-shot.back { left: 56px; top: 2px; transform: rotate(-6deg); z-index: 1; }
+.dl-shot.front { right: 56px; top: 16px; transform: rotate(4deg); z-index: 2; }
+.dl-title { font-size: 21px; font-weight: 700; color: #f5f2ea; margin: 12px 2px 4px; }
+[data-theme="light"] .dl-title { color: #211d17; }
+.dl-sub { font-size: 14.5px; line-height: 1.45; color: #a79e8d; margin: 0 2px 6px; }
+[data-theme="light"] .dl-sub { color: #6b6353; }
+.dl-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 13px;
+  margin-top: 9px;
+  border: 0;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.09);
+  color: #f5f2ea;
+  font-size: 15.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.dl-btn:hover { background: rgba(255, 255, 255, 0.15); }
+[data-theme="light"] .dl-btn { background: rgba(33, 29, 23, 0.07); color: #211d17; }
+[data-theme="light"] .dl-btn:hover { background: rgba(33, 29, 23, 0.12); }
+.dl-btn.soon { opacity: 0.6; cursor: default; }
+@media (max-width: 760px) {
+  .dl-card { left: 12px; }
 }
