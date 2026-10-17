@@ -1170,6 +1170,7 @@ WHO YOU ARE
 -----------------------
 - An agent, not a chatbot. Inside this app you have real tools (listed below) — use them.
 - You have no biography. Never claim to be human or a former trader; your authority comes from the data in front of you and the quality of your reads.
+- Links: users share video and article links (YouTube, TikTok, Instagram). Your system reads what it can from a link and attaches it further down when available. NEVER say you are "a language model", that you cannot access or open links, or that you cannot watch videos. If nothing from a link is attached, work from the link itself and the conversation, and ask for the transcript or a short description in one line.
 - Sharp, honest, and on the retail trader's side. You'd rather say "there's no trade here" than dress up a coin flip.
 - You break down complex market concepts with clear, simple language — like a knowledgeable trading buddy, not a textbook.
 - You're not afraid to call out bad setups or risky trades.
@@ -1548,6 +1549,122 @@ async function readEduCache(embedding) {
   return { best, bestScore };
 }
 
+// [SharedLink helpers]
+// Users paste video links (YouTube / TikTok / Instagram) into chat.
+// These helpers read what the platform allows a server to read: public
+// metadata always (oEmbed), and the YouTube transcript when YouTube
+// serves it. Everything fails silent: a null just means the prompt
+// block further down tells the model to ask for a paste instead.
+function extractSharedLink(text) {
+  if (typeof text !== "string") return null;
+  const m = text.match(/https?:\/\/[^\s<>\])"']+/i);
+  if (!m) return null;
+  const url = m[0].replace(/[.,!?]+$/, "");
+  const lower = url.toLowerCase();
+  if (lower.includes("youtube.com") || lower.includes("youtu.be")) {
+    let id = null;
+    const vm = url.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
+    if (vm) id = vm[1];
+    if (!id) {
+      const pm = url.match(/(?:shorts|live|embed)\/([A-Za-z0-9_-]{6,})/);
+      if (pm) id = pm[1];
+    }
+    if (!id && lower.includes("youtu.be")) {
+      const bm = url.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/);
+      if (bm) id = bm[1];
+    }
+    return { platform: "YouTube", url: url, id: id };
+  }
+  if (lower.includes("tiktok.com")) return { platform: "TikTok", url: url, id: null };
+  if (lower.includes("instagram.com")) return { platform: "Instagram", url: url, id: null };
+  return null;
+}
+
+async function fetchLinkMeta(link) {
+  try {
+    let endpoint = null;
+    if (link.platform === "YouTube") {
+      endpoint = "https://www.youtube.com/oembed?url=" + encodeURIComponent(link.url) + "&format=json";
+    } else if (link.platform === "TikTok") {
+      endpoint = "https://www.tiktok.com/oembed?url=" + encodeURIComponent(link.url);
+    }
+    if (!endpoint) return null;
+    const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+    const timer = new Promise((resolve) => setTimeout(() => resolve(null), 3000));
+    const res = await Promise.race([fetch(endpoint, { headers: { "User-Agent": ua } }), timer]);
+    if (!res || !res.ok) return null;
+    const j = await res.json();
+    const title = (j.title || "").toString().slice(0, 300);
+    const author = (j.author_name || "").toString().slice(0, 120);
+    if (!title) return null;
+    return { title: title, author: author };
+  } catch (e) {
+    return null;
+  }
+}
+
+async function fetchYouTubeTranscript(videoId) {
+  try {
+    if (!videoId) return null;
+    const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+    const body = JSON.stringify({
+      context: { client: { clientName: "WEB", clientVersion: "2.20240111.09.00", hl: "en" } },
+      videoId: videoId,
+    });
+    const timer = new Promise((resolve) => setTimeout(() => resolve(null), 4500));
+    const res = await Promise.race([
+      fetch("https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "User-Agent": ua },
+        body: body,
+      }),
+      timer,
+    ]);
+    if (!res || !res.ok) return null;
+    const data = await res.json();
+    const tracks = data && data.captions && data.captions.playerCaptionsTracklistRenderer && data.captions.playerCaptionsTracklistRenderer.captionTracks;
+    if (!Array.isArray(tracks) || tracks.length === 0) return null;
+    let track = null;
+    for (const t of tracks) { if (t.languageCode === "en" && t.kind !== "asr") { track = t; break; } }
+    if (!track) { for (const t of tracks) { if (t.languageCode === "en") { track = t; break; } } }
+    if (!track) track = tracks[0];
+    if (!track || !track.baseUrl) return null;
+    const timer2 = new Promise((resolve) => setTimeout(() => resolve(null), 4500));
+    const res2 = await Promise.race([fetch(track.baseUrl + "&fmt=json3", { headers: { "User-Agent": ua } }), timer2]);
+    if (!res2 || !res2.ok) return null;
+    const tj = await res2.json();
+    const events = tj.events || [];
+    let text = "";
+    for (const ev of events) {
+      if (!ev.segs) continue;
+      for (const seg of ev.segs) {
+        if (seg.utf8) text += seg.utf8 + " ";
+      }
+    }
+    text = text.replace(/\s+/g, " ").trim();
+    if (text.length < 80) return null;
+    return text.slice(0, 12000);
+  } catch (e) {
+    return null;
+  }
+}
+
+async function readSharedLink(promptText) {
+  try {
+    const link = extractSharedLink(promptText);
+    if (!link) return null;
+    const meta = await fetchLinkMeta(link);
+    let transcript = null;
+    if (link.platform === "YouTube" && link.id) {
+      transcript = await fetchYouTubeTranscript(link.id);
+    }
+    console.log("SharedLink " + link.platform + " meta=" + (meta ? "y" : "n") + " transcript=" + (transcript ? transcript.length : 0));
+    return { link: link, meta: meta, transcript: transcript };
+  } catch (e) {
+    return null;
+  }
+}
+// [/SharedLink helpers]
 exports.chat = onCall(
   { secrets: [togetherKey, geminiKey, metaKey], timeoutSeconds: 120, cors: true },
   async (request) => {
@@ -1647,12 +1764,13 @@ exports.chat = onCall(
       // event/price intent, no asset named, no chart or sentiment
       // request, and no market context in the recent history.
       // Any doubt falls through to the normal flow.
+      const sharedLink = signalMode ? null : await readSharedLink(prompt).catch(() => null);
       let eduEmbed = null;
       let eduNormQ = "";
       let eduExactDoc = false;
       const eduDesk = typeof userPersona === "string" && userPersona.includes("[[DESK_MODE]]");
       const eduHistClean = !(Array.isArray(history) && history.slice(-4).some((h) => h && (h.hadImage || detectPrimaryTicker(typeof h.text === "string" ? h.text : "", null))));
-      const eduGate = !signalMode && !hasImage && !isCasual && !eduDesk && !wantsEventNews && !relativeDay &&
+      const eduGate = !signalMode && !hasImage && !isCasual && !eduDesk && !wantsEventNews && !relativeDay && !sharedLink &&
         !needsPrice && eduHistClean &&
         detectAssets(prompt).cryptos.length === 0 && detectAssets(prompt).stocks.length === 0 &&
         !detectChartRequest(prompt) && !detectSentimentRequest(prompt) &&
@@ -1817,6 +1935,17 @@ exports.chat = onCall(
         finalSystemPrompt += "\n\nMACRO CONTEXT (Federal Reserve data via FRED \u2014 observation dates shown; monthly series lag by design):\n" + macroData + "\n\nUse this to explain WHY markets may be moving (rates, inflation, the dollar, fear). Never present a monthly figure as if it were released today \u2014 use its date.";
       }
 
+      if (sharedLink) {
+        const sl = sharedLink;
+        finalSystemPrompt += "\n\n-----------------------\nSHARED LINK (" + sl.link.platform + ")\n-----------------------\n";
+        if (sl.meta) finalSystemPrompt += "Video: \"" + sl.meta.title + "\"" + (sl.meta.author ? " by " + sl.meta.author : "") + "\n";
+        else finalSystemPrompt += "The user shared this link: " + sl.link.url + "\n";
+        if (sl.transcript) {
+          finalSystemPrompt += "\nFull transcript of the video:\n" + sl.transcript + "\n\nWork from the transcript: explain what it teaches in plain language. If it presents a trading strategy, pull out the exact rules (setup, entry trigger, stop, target, and any filters or minimums) and lay them out as a short list, then ask if the user wants to save it as a strategy or have you teach it step by step. Quote nothing at length; teach it in your own words.";
+        } else {
+          finalSystemPrompt += "\nThe full content could not be pulled automatically (" + (sl.link.platform === "Instagram" ? "Instagram blocks outside reads" : "the platform restricted it") + "). Work from the title and the conversation. Do NOT claim you cannot open links and never use boilerplate about being a language model. If the user is asking about the video's content or strategy, tell them what you found above and ask for the transcript or a short description in ONE line (YouTube: the transcript is under the video's ... menu; TikTok/Instagram: paste the caption or description). If they describe it, extract the rules and offer to save it as a strategy.";
+        }
+      }
       const wantsPlot =
         hasImage && !signalMode && typeof prompt === "string" && prompt.trim().toUpperCase() === "ANALYZE";
       if (wantsPlot) {
@@ -2126,7 +2255,7 @@ exports.chat = onCall(
       // answers are ever stored — no TA, price or news data was
       // attached and no cards or actions were produced — so a
       // cached answer can never go stale.
-      if (eduEmbed && eduNormQ && !eduExactDoc && textResponse &&
+      if (eduEmbed && eduNormQ && !eduExactDoc && !sharedLink && textResponse &&
         !taData && !priceData && !newsData &&
         !plot && !chartReq && !showcaseReq && !signalChart && !sentimentReq && !deskActions &&
         textResponse.length >= 80 && textResponse.length <= 6000) {

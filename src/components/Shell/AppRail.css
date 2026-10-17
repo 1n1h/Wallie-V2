@@ -43,11 +43,11 @@
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.rail-btn:hover { background: rgba(255, 255, 255, 0.07); color: #f4f0e7; }
-.rail-btn.active { background: rgba(255, 255, 255, 0.1); color: var(--wallie-accent, #4b90ff); }
+.rail-btn:hover { background: rgba(255, 255, 255, 0.05); color: #f4f0e7; }
+.rail-btn.active { background: rgba(255, 255, 255, 0.075); color: var(--wallie-accent, #4b90ff); }
 [data-theme="light"] .rail-btn { color: #57503f; }
-[data-theme="light"] .rail-btn:hover { background: rgba(33, 29, 23, 0.06); color: #211d17; }
-[data-theme="light"] .rail-btn.active { background: rgba(33, 29, 23, 0.09); color: var(--wallie-accent, #0057b8); }
+[data-theme="light"] .rail-btn:hover { background: rgba(255, 255, 255, 0.38); color: #211d17; }
+[data-theme="light"] .rail-btn.active { background: rgba(255, 255, 255, 0.62); color: var(--wallie-accent, #0057b8); box-shadow: 0 1px 5px rgba(90, 78, 60, 0.12); }
 .rail-spacer { flex: 1; }
 
 /* Floating Wallie chat button — bottom right on every non-chat page */
