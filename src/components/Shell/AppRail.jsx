@@ -228,7 +228,7 @@ export default function AppRail({ active }) {
   return (
     <>
       <nav className="app-rail" aria-label="Wallie sections">
-        <div className="rail-mark" title="Wallie">
+        <div className="rail-mark">
           <img src={wallieMark} alt="Wallie" />
         </div>
         {ITEMS.map((item) => {
@@ -238,7 +238,6 @@ export default function AppRail({ active }) {
             <button
               key={item.id}
               className={`rail-btn ${isActive ? "active" : ""}`}
-              title={item.label}
               aria-label={item.label}
               aria-current={isActive ? "page" : undefined}
               onClick={() =>
@@ -250,39 +249,41 @@ export default function AppRail({ active }) {
               }
             >
               <Icon size={21} strokeWidth={isActive ? 2.3 : 2} />
+              <span className="rail-tip">{item.label}</span>
             </button>
           );
         })}
         <div className="rail-spacer" />
         <button
           className="rail-btn"
-          title="Download Apps"
           aria-label="Download Apps"
           onClick={() => setDlOpen(true)}
         >
           <Download size={21} strokeWidth={2} />
+          <span className="rail-tip">Download Apps</span>
         </button>
         <button
           className="rail-btn"
-          title={theme === "dark" ? "Light mode" : "Dark mode"}
           aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           onClick={toggleTheme}
         >
           {theme === "dark" ? <Sun size={21} strokeWidth={2} /> : <Moon size={21} strokeWidth={2} />}
+          <span className="rail-tip">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
         </button>
         <button
           className={`rail-btn ${current === "settings" ? "active" : ""}`}
-          title="Settings"
           aria-label="Settings"
           onClick={() => navigate("/settings")}
         >
           <Settings size={21} strokeWidth={current === "settings" ? 2.3 : 2} />
+          <span className="rail-tip">Settings</span>
         </button>
       </nav>
 
       {current !== "chat" && (
-        <button className="chat-fab" onClick={() => navigate("/chat")} title="Ask Wallie" aria-label="Ask Wallie">
+        <button className="chat-fab" onClick={() => navigate("/chat")} aria-label="Ask Wallie">
           <img src={wallieMark} alt="" />
+          <span className="rail-tip fab-tip">Ask Wallie</span>
         </button>
       )}
 
