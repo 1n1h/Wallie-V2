@@ -1654,16 +1654,18 @@ async function readLinkWithBrowser(link) {
   try {
     let key = "";
     try { key = browserUseKey.value().trim(); } catch (e) { key = ""; }
-    if (!key) return null;
+    if (!key) { console.log("BrowserLink key=missing"); return null; }
     const taskText = "Open this page and read what it teaches: " + link.url + " — Do not sign in to anything; do not like, subscribe, follow, or comment. Return: the title, the creator or channel name, and a faithful account of the content. If it teaches a trading strategy, list its exact rules: the setup, entry trigger, stop loss, take profit, any filters or minimum requirements, in order. If the page cannot be read, say PAGE UNREADABLE and why.";
     const headers = { "Content-Type": "application/json", "X-Browser-Use-API-Key": key };
-    const deadline = Date.now() + 75000;
+    const browserStartedAt = Date.now();
+    const deadline = Date.now() + 95000;
+    const browserEndLog = (extra) => { console.log("BrowserLink end status=" + (status || "none") + " waited=" + Math.round((Date.now() - browserStartedAt) / 1000) + "s" + (extra || "")); };
     const createTimer = new Promise((resolve) => setTimeout(() => resolve(null), 15000));
     const createRes = await Promise.race([
       fetch("https://api.browser-use.com/api/v4/runs", { method: "POST", headers: headers, body: JSON.stringify({ task: taskText, maxCostUsd: 1 }) }),
       createTimer,
     ]);
-    if (!createRes || !createRes.ok) return null;
+    if (!createRes || !createRes.ok) { console.log("BrowserLink create http=" + (createRes ? createRes.status : "timeout")); return null; }
     const created = await createRes.json();
     const runId = created && created.id;
     if (!runId) return null;
@@ -1679,14 +1681,15 @@ async function readLinkWithBrowser(link) {
         }
       } catch (e) { /* keep polling until the deadline */ }
       if (status === "completed") break;
-      if (status && status !== "running" && status !== "queued" && status !== "created" && status !== "pending" && status !== "in_progress") return null;
+      if (status && status !== "running" && status !== "queued" && status !== "created" && status !== "pending" && status !== "in_progress") { browserEndLog(""); return null; }
     }
-    if (status !== "completed") return null;
+    if (status !== "completed") { browserEndLog(""); return null; }
     const getTimer = new Promise((resolve) => setTimeout(() => resolve(null), 10000));
     const getRes = await Promise.race([fetch("https://api.browser-use.com/api/v4/runs/" + runId, { headers: headers }), getTimer]);
-    if (!getRes || !getRes.ok) return null;
+    if (!getRes || !getRes.ok) { browserEndLog(" outlen=0"); return null; }
     const run = await getRes.json();
     const text = (((run && (run.output || run.result)) || "") + "").trim();
+    browserEndLog(" outlen=" + text.length);
     if (text.length < 40) return null;
     return text.slice(0, 6000);
   } catch (e) {
