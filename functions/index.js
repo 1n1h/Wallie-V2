@@ -928,9 +928,10 @@ async function fetchSimplePrice(prompt) {
 
 // â”€â”€â”€ News â”€â”€â”€
 
-async function searchGoogleNews(query) {
+async function searchGoogleNews(query, whenDays) {
   try {
-    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+    const boundedQuery = whenDays && whenDays > 0 ? query + " when:" + whenDays + "d" : query;
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(boundedQuery)}&hl=en-US&gl=US&ceid=US:en`;
     const res = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
     });
@@ -987,17 +988,57 @@ Rules:
 - Direction is implied by entry vs stop: stop below entry = long bias, stop above entry = short bias.`;
 }
 
+// --- Date awareness (Eastern Time) ---
+// Cloud Functions run on UTC; users are on US Eastern. All
+// user-facing "today" math happens in America/New_York and always
+// carries the weekday, so relative references ("on Friday") have
+// an anchor the model can resolve.
+const ET_TZ = "America/New_York";
+function etTodayParts() {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: ET_TZ, weekday: "short", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const g = (t) => parts.find((p) => p.type === t).value;
+  return { y: +g("year"), m: +g("month"), d: +g("day"), dow: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(g("weekday")) };
+}
+function fmtUTCDate(dt) {
+  return dt.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+function etTodayString() { const t = etTodayParts(); return fmtUTCDate(new Date(Date.UTC(t.y, t.m - 1, t.d))); }
+function etYesterdayString() { const t = etTodayParts(); return fmtUTCDate(new Date(Date.UTC(t.y, t.m - 1, t.d - 1))); }
+
+// Resolve a relative-day reference ("on Friday", "yesterday",
+// "this week") to the actual Eastern date it means, plus a news
+// recency window that covers it. Null when there is no reference.
+const WEEKDAY_IDX = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+function resolveRelativeDay(prompt) {
+  if (typeof prompt !== "string") return null;
+  const p = prompt.toLowerCase();
+  const t = etTodayParts();
+  const base = Date.UTC(t.y, t.m - 1, t.d);
+  const DAY = 86400000;
+  const fmt = (ms) => fmtUTCDate(new Date(ms));
+  if (/\blast night\b/.test(p)) return { label: "last night", date: fmt(base - DAY), whenDays: 3 };
+  if (/\byesterday\b/.test(p)) return { label: "yesterday", date: fmt(base - DAY), whenDays: 3 };
+  if (/\b(today|tonight|this morning|this afternoon|right now)\b/.test(p)) return { label: "today", date: fmt(base), whenDays: 2 };
+  for (const name of Object.keys(WEEKDAY_IDX)) {
+    if (new RegExp("\\b" + name + "\\b").test(p)) {
+      const back = (t.dow - WEEKDAY_IDX[name] + 7) % 7;
+      return { label: name, date: fmt(base - back * DAY), whenDays: Math.max(3, back + 3) };
+    }
+  }
+  if (/\b(this week|past week|last week|this month)\b/.test(p)) return { label: "this week", date: null, whenDays: 7 };
+  return null;
+}
+
 function buildSystemPrompt() {
-  const today = new Date().toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  const today = etTodayString();
+  const yesterday = etYesterdayString();
 
   return `
 You are Wallie — an AI trading agent for retail traders. You don't just talk about charts: you read them, draw on them, watch them, and act on them inside this app.
 
-Today is ${today}.
+Today is ${today} (Eastern Time). Yesterday was ${yesterday}.
+
+DATE DISCIPLINE: Resolve every relative day reference ("today", "yesterday", "on Friday", "this week", "last night") against the dates above — never guess a date. When you describe a specific past event, name its full date (weekday, month, day, year). Never present an event from one date as if it happened on a different day the user asked about.
 
 -----------------------
 WHO YOU ARE
@@ -1398,11 +1439,23 @@ exports.chat = onCall(
         /\b(analyze|analysis|setup|signal|entry|exit|support|resistance|rsi|macd|ema|sma|bollinger|technical|chart|pattern|trend|bias|long|short)\b/i.test(prompt)
       );
 
+      // Date awareness: relative-day references ("on Friday",
+      // "yesterday") resolve to a real Eastern date, and
+      // event/causation questions ("what caused the drop") route
+      // to recency-bounded news instead of the model's memory.
+      const relativeDay = !signalMode && !isCasual ? resolveRelativeDay(prompt) : null;
+      const wantsEventNews = !signalMode && !isCasual && (
+        !!relativeDay ||
+        (/\b(why|what caused|caused|reason for)\b/i.test(prompt) &&
+          /\b(drop|dropped|dropping|fall|fell|falling|plunge|plunged|crash|crashed|surge|surged|rally|rallied|jump|jumped|spike|spiked|tank|tanked|soar|soared|slide|slid|slump|slumped|dump|dumped|move|moved|selloff|sold off)\b/i.test(prompt))
+      );
+
       const needsPrice = !signalMode && !isCasual && !needsTA && (
         /\b(price|worth|trading at|cost of|how much)\b/i.test(prompt) ||
         /\b(sentiment|news|market|current|latest|today|right now|this week|what.?s happening)\b/i.test(prompt) ||
         detectAssets(prompt).cryptos.length > 0 ||
-        detectAssets(prompt).stocks.length > 0
+        detectAssets(prompt).stocks.length > 0 ||
+        wantsEventNews
       );
 
       // â”€â”€â”€ Fetch data â”€â”€â”€
@@ -1497,15 +1550,18 @@ exports.chat = onCall(
         // Also fetch news for context
         const newsQuery = primaryTicker?.display || prompt;
         try {
-          newsData = await searchGoogleNews(newsQuery);
+          newsData = await searchGoogleNews(newsQuery, relativeDay ? relativeDay.whenDays : null);
         } catch {}
       }
 
       if (needsPrice) {
         try {
+          const evtTicker = wantsEventNews ? detectPrimaryTicker(prompt, pageContext) : null;
+          const evtWord = (prompt.match(/\b(drop|dropped|fall|fell|plunge|plunged|crash|crashed|surge|surged|rally|rallied|jump|jumped|spike|spiked|tank|tanked|soar|soared|slide|slump|slumped|dump|dumped|selloff)\b/i) || [])[1] || "";
+          const eventQuery = evtTicker && evtWord ? evtTicker.display + " " + evtWord : prompt;
           const [prices, news] = await Promise.all([
             fetchSimplePrice(prompt),
-            searchGoogleNews(prompt),
+            searchGoogleNews(wantsEventNews ? eventQuery : prompt, relativeDay ? relativeDay.whenDays : null),
           ]);
           priceData = prices;
           newsData = news;
@@ -1527,6 +1583,10 @@ exports.chat = onCall(
 
       if (priceData) {
         finalSystemPrompt += `\n-----------------------\nLIVE PRICES\n-----------------------\n${priceData}\n\nUse these exact prices. Do not guess or make up numbers.\n`;
+      }
+
+      if (relativeDay) {
+        finalSystemPrompt += "\n\nTIME ANCHOR: The user is asking about " + relativeDay.label + (relativeDay.date ? " \u2014 " + relativeDay.date : "") + ". Today is " + etTodayString() + ". Any news attached to this reply was limited to roughly the last " + relativeDay.whenDays + " days. Rules: (1) Name the full date of any event you describe. (2) Only describe events that match the day the user asked about. (3) If none of the results describe an event on that date, say you could not find a matching event for that date \u2014 do NOT substitute an older event or an event from a different day, and do not fill the gap from memory.";
       }
 
       if (newsData) {
@@ -1881,9 +1941,10 @@ exports.searchWeb = onCall(
     }
 
     try {
+      const relDay = resolveRelativeDay(query);
       const [prices, news] = await Promise.all([
         fetchSimplePrice(query),
-        searchGoogleNews(query),
+        searchGoogleNews(query, relDay ? relDay.whenDays : null),
       ]);
       const parts = [];
       if (prices) parts.push(prices);
