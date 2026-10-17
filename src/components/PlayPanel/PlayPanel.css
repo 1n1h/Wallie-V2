@@ -712,3 +712,9 @@
   padding: 2px 4px;
 }
 .wc-x:hover { opacity: 1; }
+
+/* ===== LESSON READABILITY: white letters on the dark card (dark theme) ===== */
+.pp-lesson-title { color: #ffffff; }
+.pp-lesson-body { color: #e8e6e1; }
+[data-theme="light"] .pp-lesson-title { color: #2e2a23; }
+[data-theme="light"] .pp-lesson-body { color: #57503f; }
