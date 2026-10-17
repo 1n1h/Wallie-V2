@@ -109,6 +109,18 @@ export default function DemoDesk() {
       window.dispatchEvent(new CustomEvent("wallie:sidebar-restore"));
     }
   }, [chatOpen]);
+
+  // The app rail's Wallie button toggles this chat now.
+  useEffect(() => {
+    const toggle = () => setChatOpen((o) => !o);
+    window.addEventListener("wallie:toggle-deskchat", toggle);
+    return () => window.removeEventListener("wallie:toggle-deskchat", toggle);
+  }, []);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(chatOpen ? "wallie:deskchat-open" : "wallie:deskchat-close"));
+  }, [chatOpen]);
+
   const [chartEngine, setChartEngine] = useState(() => localStorage.getItem("wallie_desk_chart") || "wallie");
   const [actionLog, setActionLog] = useState([]);
   const [toolMode, setToolMode] = useState("off");
@@ -1121,11 +1133,6 @@ export default function DemoDesk() {
 
     </div>
 
-    {!chatOpen && (
-      <button className="demo-ask" onClick={() => setChatOpen(true)}>
-        <MessageCircle size={18} /> Ask Wallie
-      </button>
-    )}
     {chatOpen && (
       <div className="demo-chatdock">
         <DeskChat

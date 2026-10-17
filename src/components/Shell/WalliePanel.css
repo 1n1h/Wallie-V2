@@ -1,0 +1,16 @@
+/* Floating frame for the in-place Wallie panel (inner chat styles
+   come from DemoDesk.css — the same .desk-chat classes the desk uses). */
+.wallie-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(410px, 94vw);
+  z-index: 940;
+  box-shadow: -18px 0 50px rgba(0, 0, 0, 0.35);
+  animation: wallie-panel-in 0.22s ease;
+}
+@keyframes wallie-panel-in {
+  from { transform: translateX(26px); opacity: 0.35; }
+  to { transform: none; opacity: 1; }
+}

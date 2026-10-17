@@ -5,6 +5,8 @@ import {
   Download,
   Library,
   Lightbulb,
+  Lock,
+  LogOut,
   MessageCircle,
   Monitor,
   Moon,
@@ -12,6 +14,7 @@ import {
   Search,
   Settings,
   Smartphone,
+  Sparkles,
   Sun,
   TrendingUp,
   Users,
@@ -22,6 +25,7 @@ import { Context } from "../../context/Context.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { db } from "../../firebase";
 import wallieMark from "../../assets/wallie-mark.png";
+import WalliePanel from "./WalliePanel";
 import "./AppRail.css";
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/wallie-ai/id6744089470";
@@ -162,9 +166,73 @@ function DownloadCard({ onClose }) {
 export default function AppRail({ active }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
   const [dlOpen, setDlOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(e.target) &&
+        !(menuRef.current && menuRef.current.contains(e.target))
+      ) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const profileName = user?.displayName || (user?.email ? user.email.split("@")[0] : "Account");
+  const profileInitials = profileName.slice(0, 2).toUpperCase();
+
+  const handleLogout = async () => {
+    setProfileOpen(false);
+    await logout();
+    navigate("/");
+  };
+
+  const handleAdmin = () => {
+    setProfileOpen(false);
+    const pin = prompt("Enter admin PIN:");
+    if (pin === import.meta.env.VITE_ADMIN_PIN) {
+      sessionStorage.setItem("wallie_admin", "true");
+      navigate("/admin/dashboard");
+    }
+  };
+
+  // The round Wallie button: on the desk it drives the desk's own
+  // chat panel (and steps aside while that panel is open); anywhere
+  // else it opens the floating Wallie panel right on the page.
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [deskChatOpen, setDeskChatOpen] = useState(false);
+
+  useEffect(() => {
+    const on = () => setDeskChatOpen(true);
+    const off = () => setDeskChatOpen(false);
+    window.addEventListener("wallie:deskchat-open", on);
+    window.addEventListener("wallie:deskchat-close", off);
+    return () => {
+      window.removeEventListener("wallie:deskchat-open", on);
+      window.removeEventListener("wallie:deskchat-close", off);
+    };
+  }, []);
+
+  useEffect(() => {
+    setPanelOpen(false);
+  }, [location.pathname]);
+
+  const onFab = () => {
+    if (location.pathname.startsWith("/demo")) {
+      window.dispatchEvent(new CustomEvent("wallie:toggle-deskchat"));
+    } else {
+      setPanelOpen((o) => !o);
+    }
+  };
 
   // Theme: the attribute on <html> is the source of truth; a
   // MutationObserver keeps this toggle in sync when the theme is
@@ -278,13 +346,55 @@ export default function AppRail({ active }) {
           <Settings size={21} strokeWidth={current === "settings" ? 2.3 : 2} />
           <span className="rail-tip">Settings</span>
         </button>
+        <div className="rail-profile" ref={profileRef}>
+          <button
+            className="rail-avatar-btn"
+            aria-label="Your account"
+            onClick={() => setProfileOpen((o) => !o)}
+          >
+            {user?.photoURL ? (
+              <img className="rail-avatar" src={user.photoURL} alt="" />
+            ) : (
+              <span className="rail-avatar rail-avatar-initials">{profileInitials}</span>
+            )}
+            <span className="rail-tip">Your account</span>
+          </button>
+          {profileOpen &&
+            createPortal(
+              <div className="rail-profile-menu" ref={menuRef}>
+                <div className="rail-menu-head">{profileName}</div>
+                <div
+                  className="rail-menu-item"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    window.dispatchEvent(
+                      new CustomEvent("wallie:open-settings", { detail: { section: "plan" } }),
+                    );
+                  }}
+                >
+                  <Sparkles size={16} strokeWidth={1.8} /> Upgrade Plan
+                </div>
+                <div className="rail-menu-item" onClick={handleAdmin}>
+                  <Lock size={16} strokeWidth={1.8} /> Admin Dashboard
+                </div>
+                <div className="rail-menu-divider" />
+                <div className="rail-menu-item" onClick={handleLogout}>
+                  <LogOut size={16} strokeWidth={1.8} /> Log Out
+                </div>
+              </div>,
+              document.body,
+            )}
+        </div>
       </nav>
 
-      {current !== "chat" && (
-        <button className="chat-fab" onClick={() => navigate("/chat")} aria-label="Ask Wallie">
+      {current !== "chat" && !deskChatOpen && (
+        <button className="chat-fab" onClick={onFab} aria-label="Ask Wallie">
           <img src={wallieMark} alt="" />
           <span className="rail-tip fab-tip">Ask Wallie</span>
         </button>
+      )}
+      {!location.pathname.startsWith("/demo") && (
+        <WalliePanel open={panelOpen} onClose={() => setPanelOpen(false)} page={current} />
       )}
 
       {searchOpen && createPortal(<SearchOverlay onClose={() => setSearchOpen(false)} />, document.body)}
