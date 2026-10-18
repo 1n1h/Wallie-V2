@@ -11,6 +11,11 @@ import heroImg3 from "../../assets/hero/hero-3.jpg";
 import heroImg4 from "../../assets/hero/hero-4.jpg";
 import heroImg5 from "../../assets/hero/hero-5.jpg";
 import heroImg6 from "../../assets/hero/hero-6.jpg";
+import heroImg7 from "../../assets/hero/hero-7.jpg";
+import heroImg8 from "../../assets/hero/hero-8.jpg";
+import heroImg9 from "../../assets/hero/hero-9.jpg";
+import heroImg10 from "../../assets/hero/hero-10.jpg";
+import heroImg11 from "../../assets/hero/hero-11.jpg";
 
 // Hero band imagery (Travis's picks) — the band cycles the list.
 const HERO_IMAGES = [
@@ -20,6 +25,11 @@ const HERO_IMAGES = [
   { src: heroImg4, alt: "" },
   { src: heroImg5, alt: "" },
   { src: heroImg6, alt: "" },
+  { src: heroImg7, alt: "" },
+  { src: heroImg8, alt: "" },
+  { src: heroImg9, alt: "" },
+  { src: heroImg10, alt: "" },
+  { src: heroImg11, alt: "" },
 ];
 
 // Scroll-reveal hook
